@@ -2,7 +2,7 @@
 """本地网页决策服务。只依赖标准库。
 
 用法（在项目根目录执行）：
-  decide_server.py serve [--root design] [--port 8765] [--host 127.0.0.1] [--max-open 3]
+  decide_server.py [--phase P1] serve [--root design] [--port 8765] [--host 127.0.0.1] [--max-open 3]
   decide_server.py wait [--chunk 45] [--idle 0]       # 分段等待；到时续接，不结束设计流程
   decide_server.py ack ID --ts 原版本时间戳           # 落实答案后精确确认
   decide_server.py resume                             # 用户回来后解除「我先离开」
@@ -774,7 +774,9 @@ def cmd_serve(a):
     os.makedirs(os.path.join(store.root, P.RUNTIME), exist_ok=True)
     with open(P.runtime(store.root, ".server.json"), "w") as f:
         json.dump({"port": srv.server_port, "host": a.host, "max_open": a.max_open, "pid": os.getpid()}, f)
-    print(f"[decide] 决策页面：http://{'localhost' if a.host in ('127.0.0.1','0.0.0.0') else a.host}:{srv.server_port}/")
+    meta = P.phase_info(store.root) or {}
+    phase = f"｜设计期 {meta.get('id')}" if meta.get("id") else ""
+    print(f"[decide] 决策页面{phase}：http://{'localhost' if a.host in ('127.0.0.1','0.0.0.0') else a.host}:{srv.server_port}/")
     print("[decide] 若通过 SSH 连到这台机器，在本地终端运行：ssh -L %d:localhost:%d <主机>，再在本地浏览器打开上面的地址" % (srv.server_port, srv.server_port))
     print("[decide] 创建决策后读取 gate.py next --json 的 decision_notice，在用户可见的对话里发送地址、待决定项和提交方式，然后再 wait；本日志不能替代对话通知。")
     sys.stdout.flush()
@@ -834,6 +836,7 @@ def cmd_export(a):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", default=None, help=f"设计目录，默认向上查找 {P.DIRNAME}/")
+    ap.add_argument("--phase", default=None, help="多期项目的设计期 ID")
     ap.add_argument("--max-open", type=int, default=3)
     sp = ap.add_subparsers(dest="cmd", required=True)
     p = sp.add_parser("serve"); p.add_argument("--port", type=int, default=8765); p.add_argument("--host", default="127.0.0.1"); p.set_defaults(f=cmd_serve)
@@ -844,8 +847,10 @@ def main():
     sp.add_parser("pause").set_defaults(f=cmd_pause)
     sp.add_parser("export").set_defaults(f=cmd_export)
     a = ap.parse_args()
-    if a.root is None:
-        a.root = P.default_root()
+    try:
+        a.root = P.resolve_root(a.root, a.phase)
+    except ValueError as e:
+        sys.exit(f"[decide] {e}")
     a.f(a)
 
 

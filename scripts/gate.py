@@ -2,11 +2,13 @@
 """阶段闸门（状态机）。只依赖标准库。
 
 用法（在项目根目录执行；设计目录为项目下的 .taste-design/，目录划分见 paths.py）：
-  gate.py init [--mode attended|unattended] [--channel web|inline|static] [--media ignore|lfs|commit]
+  gate.py init [--phase ID] [--name 名称] [--mode attended|unattended] [--channel web|inline|static] [--media ignore|lfs|commit]
+  gate.py phase list [--json]       # 列出同一项目的多个设计期
+  gate.py phase add ID --name 名称 [--parent ID] [--inherit shared/brand.md ...]
   gate.py media ignore|lfs|commit   # 切换 media/ 的 git 策略（重写 .gitignore / .gitattributes）
   gate.py migrate [--from design]   # 把旧版 design/ 目录迁移到 .taste-design/
   gate.py status                    # 当前阶段、轨道、本阶段还差什么
-  gate.py context --json             # 只读恢复入口：真实状态、当前阶段与记录路径
+  gate.py context --json --compact   # 默认恢复入口；详情按需用完整输出或 --section 分页
     gate.py next [--json]              # 统一流程状态、完整未确认答案与下一步
     gate.py block --reason … --tried … --needs …  # 登记需用户处理的真实外部阻塞
     gate.py unblock --reason …         # 解除阻塞后接续原任务
@@ -28,7 +30,7 @@ import argparse, datetime, glob, json, os, re, shutil, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from rules import validate_question  # noqa: E402
-from stages import STAGES, ALL, load_scope, validate_scope, plan, in_scope_pages  # noqa: E402
+from stages import STAGES, ALL, load_scope, validate_scope, validate_phase_scope, plan, in_scope_pages  # noqa: E402
 import paths as P  # noqa: E402
 import summary as SUM  # noqa: E402
 import theme as TH  # noqa: E402
@@ -54,6 +56,9 @@ def load_state(root):
     st.setdefault("merged", {})
     st.setdefault("optional", [])
     st["merged"] = {int(k): v for k, v in st["merged"].items()}
+    meta = P.phase_info(root)
+    if meta:
+        st.setdefault("phase", meta.get("id"))
     return st
 
 
@@ -96,7 +101,8 @@ def pending_topics(root, stages):
 
 def snapshot(root, n):
     sc = load_scope(root) or {}
-    base = os.path.dirname(root)
+    container = os.path.dirname(os.path.dirname(root)) if P.phase_info(root) else root
+    base = os.path.dirname(container)
     dst = os.path.join(root, P.SNAPSHOTS, f"gate-{n}")
     copied = []
     for src in sc.get("source_dirs") or []:
@@ -185,6 +191,17 @@ def blockers(root, st, n):
             probs.append("缺少 scope.json")
         else:
             probs += validate_scope(sc)
+            meta = P.phase_info(root)
+            container = os.path.dirname(os.path.dirname(root)) if meta else None
+            probs += validate_phase_scope(sc, meta, container)
+            for rel in (meta or {}).get("inherits") or []:
+                try:
+                    path = P.inheritance_path(container, rel)
+                except ValueError as e:
+                    probs.append(str(e))
+                    continue
+                if not os.path.exists(path):
+                    probs.append(f"继承基线不存在：{rel}；请先补齐跨期基线，或在本期 phase.json 中移除这条继承")
             if sc.get("mode") == "redesign":
                 shots = [f for ext in ("png", "jpg", "jpeg", "webp") for f in glob.glob(os.path.join(root, P.BASELINE, f"*.{ext}"))]
                 need = max(1, len(in_scope_pages(sc)))
@@ -206,6 +223,8 @@ def blockers(root, st, n):
             probs.append("缺少 work/variants/layout-check.json：运行 variants_check.py 检查克制 / 中等 / 大胆的布局差异")
         else:
             res = json.loads(read(root, "work/variants/layout-check.json") or "{}")
+            if sc and res.get("layout_freedom") != sc.get("layout_freedom"):
+                probs.append("布局自由度与 layout-check.json 不一致：按已批准的 scope.json 重新运行 variants_check.py，不得改报告绕过检查")
             if os.path.exists(vpath) and res.get("variants_mtime", 0) + 1 < os.path.getmtime(vpath):
                 probs.append("variants.html 改过之后没有重新运行 variants_check.py")
             for r in res.get("variants", []):
@@ -344,7 +363,9 @@ def workflow_next(root, snapshot=None):
     import waitlib
     st = load_state(root)
     cur = st["stage"]
-    out = {"stage": cur, "stage_name": STAGES[cur]["name"], "new": [], "open": [],
+    meta = P.phase_info(root) or {}
+    out = {"phase": st.get("phase") or meta.get("id"), "phase_name": meta.get("name") or "",
+           "stage": cur, "stage_name": STAGES[cur]["name"], "new": [], "open": [],
            "queued": [], "blockers": [], "gate_ready": False, "completed": False}
 
     def result(status, action, hint):
@@ -377,7 +398,7 @@ def workflow_next(root, snapshot=None):
     if cur in st["optional"] and skip_ok and not (cur == 5 and (load_scope(root) or {}).get("user_customizable")):
         return result("gate-ready", "skip", f"用户已批准跳过阶段 {cur}。运行 gate.py skip {cur} --reason …，记录代定取值并直接开始轨道下一阶段。")
     if out["gate_ready"]:
-        nx = next_stage(st, cur)
+        nx = next_stage(plan(load_scope(root)) if cur == 0 else st, cur)
         hint = f"运行 gate.py pass {cur}；" + (f"随后 gate.py check {nx}，直接开始阶段 {nx}，不等待用户说继续。" if nx is not None else "随后输出最终交付。")
         return result("gate-ready", "pass", hint)
     if v["open"]:
@@ -396,23 +417,36 @@ def cmd_next(a):
     if flow["new"]:
         flow = waitlib.deliver(root, flow["new"])
     if a.json:
-        print(json.dumps(flow, ensure_ascii=False))
+        print(json.dumps({k: v for k, v in flow.items() if k != "new_text"}, ensure_ascii=False))
     else:
-        print(f"流程状态：{flow['status']}｜当前阶段：{flow['stage']}")
+        phase = f"{flow.get('phase')} {flow.get('phase_name') or ''}".strip()
+        print(f"设计期：{phase or '单期'}｜流程状态：{flow['status']}｜当前阶段：{flow['stage']}")
         if flow.get("new_text"):
             print(flow["new_text"])
         print(flow["next"])
 
 
 def cmd_context(a):
-    """列出恢复所需的最小索引；不交付或确认答案，不展开历史全文。"""
+    """恢复只读概览有界；详情显式分页，不交付或确认答案。"""
+    if a.offset < 0 or (a.offset and not a.section):
+        sys.exit("[gate] --offset 必须非负，且非零时需要 --section 指定详情")
     root = os.path.abspath(a.root)
     st = load_state(root)
     flow = workflow_next(root)
     covered = stages_of(st, st["stage"])
     skill = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    records = [P.PROGRESS, P.NOTES, P.SCOPE, f"{P.BRIEF}/brief.md", f"{P.BRIEF}/traits.md",
-               f"{P.BRIEF}/content.yaml", f"{P.BRIEF}/constraints.yaml"]
+    records = [P.PROGRESS, P.SCOPE, f"{P.BRIEF}/constraints.yaml", P.REFS,
+               f"{P.BRIEF}/brief.md", f"{P.BRIEF}/traits.md", P.NOTES, f"{P.BRIEF}/content.yaml"]
+    inherited = []
+    meta = P.phase_info(root)
+    if meta:
+        container = os.path.dirname(os.path.dirname(root))
+        for rel in meta.get("inherits") or []:
+            try:
+                path = P.inheritance_path(container, rel)
+                inherited.append({"path": path, "exists": os.path.exists(path)})
+            except ValueError as e:
+                inherited.append({"path": rel, "exists": False, "error": str(e)})
     current = []
     for d in decisions(root, covered):
         entry = {"id": d["id"], "question": os.path.join(d["_dir"], "question.json")}
@@ -420,19 +454,82 @@ def cmd_context(a):
             entry.update(answer=os.path.join(d["_dir"], "answer.json"),
                          ts=d["_answer"].get("ts"))
         current.append(entry)
-    out = {
-        "root": root,
-        "flow": {k: flow[k] for k in ("status", "action", "stage", "stage_name", "next", "blockers", "open", "queued")},
-        "sequence": st["sequence"], "passed": st["passed"],
-        "records": [{"path": os.path.join(root, rel), "exists": os.path.exists(os.path.join(root, rel))}
-                    for rel in records],
-        "stage_guides": [os.path.join(skill, "references", f"stage-{n}.md") for n in sorted(covered)],
+    sections = {
         "decisions": current,
         "unacked": [{"id": x["id"], "ts": x.get("ts")} for x in flow["new"]],
+        "blockers": flow["blockers"], "open": flow["open"], "queued": flow["queued"], "inherited": inherited,
+    }
+    if a.section:
+        items = sections[a.section]
+        end = a.offset + a.limit
+        print(json.dumps({"root": root, "stage": st["stage"], "section": a.section,
+                          "total": len(items), "offset": a.offset, "items": items[a.offset:end],
+                          "next_offset": end if end < len(items) else None}, ensure_ascii=False, indent=2))
+        return
+
+    # 预览只用于定位。超出部分有显式标记，不能当作已读完整要求或答案。
+    def preview(value, limit):
+        return {"text": value[:limit], "truncated": len(value) > limit}
+
+    checkpoint = {"path": os.path.join(root, P.PROGRESS), "status": "missing"}
+    if os.path.exists(checkpoint["path"]):
+        with open(checkpoint["path"], encoding="utf-8") as f:
+            text = f.read(3001)
+        match = re.search(r"对应阶段\s*[:：]\s*(\d+)", text)
+        stage_matches = bool(match and int(match[1]) == st["stage"])
+        checkpoint.update(preview(text, 3000), stage_matches=stage_matches,
+                          status="available" if stage_matches and "待填写" not in text and "待核对" not in text else "needs-review")
+    groups = {}
+    for item in flow["blockers"]:
+        kind = ("方案检查" if item.startswith("方案 ") else "产物缺失" if item.startswith("缺少") else
+                "答案未确认" if item.startswith("答案尚未") else "决策与验收" if "决策" in item else "其他检查")
+        if kind not in groups:
+            groups[kind] = {"category": kind, "count": 0, "example": preview(item, 180)}
+        groups[kind]["count"] += 1
+    hints = {"processing": "运行 next --json 读取完整未确认答案，核对落实位置后精确 ack。",
+             "waiting": "核对实际决策入口，在当前对话通知地址和待答项，再等待。",
+             "working": "按分组阻塞和当前工作记录选一个小步骤；缺口明确后才查详情。",
+             "gate-ready": "按 next --json 的 action 过闸并开始实际后继阶段。",
+             "paused": "用户明确恢复后 resume；不凭工作记录自行解除暂停。",
+             "blocked": "用 next --json 读取已登记的阻塞、尝试和所需操作。",
+             "completed": "核对交付产物后输出最终交付，不重启设计流程。"}
+    out = {
+        "phase": st.get("phase"), "phase_name": (P.phase_info(root) or {}).get("name"),
+        "root": root,
+        "flow": {**{k: flow[k] for k in ("status", "action", "stage", "stage_name")},
+                 "next": hints[flow["status"]],
+                 "blockers": [preview(x, 180) for x in flow["blockers"][:a.limit]],
+                 "open": flow["open"][:a.limit], "queued": flow["queued"][:a.limit]},
+        "sequence": st["sequence"], "passed": st["passed"],
+        "checkpoint": checkpoint,
+        "recovery_action": "rebuild-checkpoint" if checkpoint["status"] != "available" else "verify-current-task",
+        "inherited": inherited[:a.limit],
+        "records": [{"path": os.path.join(root, rel), "exists": os.path.exists(os.path.join(root, rel)),
+                     "bytes": os.path.getsize(os.path.join(root, rel)) if os.path.exists(os.path.join(root, rel)) else None}
+                    for rel in records],
+        "stage_guides": [os.path.join(skill, "references", f"stage-{n}.md") for n in sorted(covered)],
+        "artifact_patterns": [os.path.join(root, rel) for n in sorted(covered)
+                              for rel in STAGES[n]["files"] + STAGES[n]["globs"]],
+        "decisions": current[:a.limit], "unacked": sections["unacked"][:a.limit],
+        "blocker_groups": list(groups.values()),
+        "pagination": {key: {"total": len(items), "next_offset": a.limit if len(items) > a.limit else None}
+                       for key, items in sections.items()},
         "history_index": os.path.join(root, P.SUMMARY, "README.md"),
         "recovery_guide": os.path.join(skill, "references", "continuity.md"),
-        "hint": "先核对记录、当前阶段说明和实际产物；缺失或过时的记录不得靠猜测补齐。用 next --json 读取完整未确认答案，落实后再 ack；历史与样张按依赖回查。",
+        "hint": "先核对当前任务、有效约束、直接依赖和下一步；缺工作记录时优先按事实补建。定位后立即做一个小步骤，不扫描全部历史或脚本源码。预览和索引不代表完整阅读；详情按需用 context --json --section 名称 --offset N 分页。",
     }
+    if a.compact:
+        out = {
+            "phase": out["phase"], "phase_name": out["phase_name"], "root": root,
+            "flow": out["flow"], "checkpoint": {
+                "path": checkpoint["path"], "status": checkpoint["status"],
+                "stage_matches": checkpoint.get("stage_matches")},
+            "recovery_action": out["recovery_action"],
+            "inherited": inherited[:a.limit],
+            "records": [x for x in out["records"] if not x["exists"] or x["bytes"] == 0],
+            "stage_guides": out["stage_guides"], "pagination": out["pagination"],
+            "hint": "compact 模式只保留恢复入口；按需运行 context --json 或 --section 读取详情。",
+        }
     print(json.dumps(out, ensure_ascii=False, indent=2))
 
 
@@ -459,6 +556,16 @@ def cmd_unblock(a):
 
 def cmd_init(a):
     root = os.path.abspath(a.root)
+    if getattr(a, "phase", None):
+        container = root
+        if os.path.exists(os.path.join(container, P.STATE)):
+            sys.exit("[gate] 当前 .taste-design/ 是单期布局；不能直接在其中创建多期。先保留现有项目，另建多期目录或先按文档迁移。")
+        root = P.add_phase_record(container, a.phase, getattr(a, "name", None),
+                                  getattr(a, "parent", None), getattr(a, "inherit", None))
+    else:
+        container = P.find_container(os.path.dirname(root)) if os.path.exists(root) else None
+        if container and os.path.isdir(os.path.join(container, P.PHASES)) and P.phase_ids(container):
+            sys.exit("[gate] 当前是多期项目，必须用 --phase ID 初始化或新增某一期")
     legacy = os.path.join(os.path.dirname(root), "design", "state.json")
     if os.path.exists(legacy) and not os.path.exists(os.path.join(root, P.STATE)):
         sys.exit("[gate] 发现旧版 design/ 目录。先运行 gate.py migrate 迁移到 .taste-design/，不要重新初始化。")
@@ -472,13 +579,72 @@ def cmd_init(a):
         return
     st = {"stage": 0, "passed": [], "mode": a.mode, "channel": a.channel,
           "sequence": list(ALL), "merged": {}, "optional": [], "history": [{"ts": now(), "event": "init"}]}
+    meta = P.phase_info(root)
+    if meta:
+        st["phase"] = meta["id"]
     save_state(root, st)
     progress = os.path.join(root, P.PROGRESS)
     if not os.path.exists(progress):
         shutil.copyfile(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                                      "templates", "progress.md"), progress)
     log(root, f"# 决策记录\n\n- {now()} | 初始化 | 模式 {a.mode} | 通道 {a.channel} | 素材策略 {P.load_config(root)['media']}")
-    print(f"[gate] 已初始化 {root}，当前阶段 {name(0)}；media/ 的 git 策略：{P.load_config(root)['media']}")
+    phase = f"（设计期 {st['phase']}）" if st.get("phase") else ""
+    print(f"[gate] 已初始化 {root}{phase}，当前阶段 {name(0)}；media/ 的 git 策略：{P.load_config(root)['media']}")
+    if not st.get("phase"):
+        print("[gate] 单期项目已初始化。若后续需要 P1/P2/P3，请保留本期作为兼容单期，"
+              "不要直接改写 record/state.json 冒充多期；另建多期项目并用 gate.py init --phase P1 开始。")
+
+
+def cmd_phase(a):
+    root = os.path.abspath(a.root)
+    container = root if os.path.exists(os.path.join(root, P.PROJECT)) else P.find_container(root)
+    if not container:
+        container = root
+    if a.action == "add":
+        if os.path.exists(os.path.join(container, P.STATE)):
+            sys.exit("[gate] 当前是单期布局，不能直接添加多期；请在新的多期 .taste-design/ 中创建。")
+        try:
+            phase_root = P.add_phase_record(container, a.id, a.name, a.parent, a.inherit)
+        except ValueError as e:
+            sys.exit(f"[gate] {e}")
+        for sub in P.MKDIRS:
+            os.makedirs(os.path.join(phase_root, sub), exist_ok=True)
+        P.write_git_files(phase_root, a.media)
+        st = {"stage": 0, "passed": [], "mode": a.mode, "channel": a.channel, "phase": a.id,
+              "sequence": list(ALL), "merged": {}, "optional": [],
+              "history": [{"ts": now(), "event": "init"}]}
+        save_state(phase_root, st)
+        progress = os.path.join(phase_root, P.PROGRESS)
+        if not os.path.exists(progress):
+            shutil.copyfile(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                         "templates", "progress.md"), progress)
+        log(phase_root, f"# 决策记录\n\n- {now()} | 初始化设计期 {a.id} | 模式 {a.mode} | 通道 {a.channel}")
+        print(f"[gate] 已新增设计期 {a.id}（{a.name or a.id}）→ {phase_root}")
+        return
+    project = P.load_project(container)
+    rows = []
+    for item in (project or {}).get("phases") or []:
+        p = os.path.join(container, P.PHASES, item["id"])
+        state_path = os.path.join(p, P.STATE)
+        row = {"id": item["id"], "name": item.get("name", item["id"]),
+               "parent_phase": item.get("parent_phase"), "inherits": item.get("inherits") or [],
+               "root": p}
+        if os.path.exists(state_path):
+            st = json.load(open(state_path, encoding="utf-8"))
+            row.update(stage=st.get("stage"), passed=st.get("passed") or [],
+                       completed=bool(st.get("sequence")) and set(st.get("sequence")).issubset(st.get("passed") or []))
+        rows.append(row)
+    if a.json:
+        print(json.dumps({"container": container, "phases": rows}, ensure_ascii=False, indent=2))
+        return
+    if not rows:
+        print("[gate] 还没有设计期。运行 gate.py init --phase P1 --name 第一期")
+        return
+    print(f"多期项目：{container}")
+    for r in rows:
+        state = "已完成" if r.get("completed") else f"阶段 {r.get('stage', '?')}"
+        dep = f"；父期 {r['parent_phase']}" if r.get("parent_phase") else ""
+        print(f"  {r['id']}  {r['name']}  {state}{dep}")
 
 
 def cmd_media(a):
@@ -510,7 +676,9 @@ def cmd_status(a):
     st = load_state(root)
     n = st["stage"]
     sc = load_scope(root)
-    print(f"当前阶段：{name(n)}   模式：{st['mode']}   通道：{st['channel']}   轨道：{(sc or {}).get('track', '未定')}")
+    meta = P.phase_info(root) or {}
+    phase = f"设计期：{meta.get('id')} {meta.get('name') or ''}".strip() + "   " if meta else ""
+    print(f"{phase}当前阶段：{name(n)}   模式：{st['mode']}   通道：{st['channel']}   轨道：{(sc or {}).get('track', '未定')}")
     print(f"阶段序列：{describe_plan(st)}")
     print(f"已通过：{st['passed'] or '无'}   待复核事项：{pending_count(root)}")
     flow = workflow_next(root)
@@ -567,6 +735,10 @@ def cmd_pass(a):
     if n == 0:
         st.update(plan(load_scope(root)))
         print(f"[gate] 本项目的阶段序列：{describe_plan(st)}")
+        start = (load_scope(root) or {}).get("start_stage")
+        if start:
+            print(f"[gate] 本期从阶段 {start} 开始；阶段 0 仅用于登记范围与接续依据。"
+                  "被跳过的旧期验收不能静默充作本期验收，先核对用户批准的继承来源。")
         print("[gate] 请把这条序列原样告诉用户（走的是哪条轨道、哪些闸门被合并或省略）。")
     snap = snapshot(root, n)
     if snap:
@@ -742,16 +914,31 @@ def cmd_record(a):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", default=None, help=f"设计目录，默认向上查找 {P.DIRNAME}/")
+    ap.add_argument("--phase", default=None, help="多期项目的设计期 ID；也可设 TASTE_DESIGN_PHASE")
     sp = ap.add_subparsers(dest="cmd", required=True)
-    p = sp.add_parser("init"); p.add_argument("--mode", default="attended", choices=["attended", "unattended"])
+    p = sp.add_parser("init"); p.add_argument("--phase", default=argparse.SUPPRESS, help="多期项目中要初始化的设计期 ID")
+    p.add_argument("--mode", default="attended", choices=["attended", "unattended"])
     p.add_argument("--channel", default="web", choices=["web", "inline", "static"]); p.add_argument("--force", action="store_true")
     p.add_argument("--media", choices=P.MEDIA_POLICIES, help="media/ 的 git 策略，默认 ignore")
+    p.add_argument("--name", help="多期项目中的期名称")
+    p.add_argument("--parent", help="父期 ID；只表示来源，不自动继承验收状态")
+    p.add_argument("--inherit", action="append", help="跨期稳定的相对路径，可重复")
     p.set_defaults(f=cmd_init)
+    p = sp.add_parser("phase"); p.add_argument("action", choices=["add", "list"]); p.add_argument("id", nargs="?")
+    p.add_argument("--name"); p.add_argument("--parent"); p.add_argument("--inherit", action="append")
+    p.add_argument("--media", default="ignore", choices=P.MEDIA_POLICIES)
+    p.add_argument("--mode", default="attended", choices=["attended", "unattended"])
+    p.add_argument("--channel", default="web", choices=["web", "inline", "static"])
+    p.add_argument("--json", action="store_true"); p.set_defaults(f=cmd_phase)
     p = sp.add_parser("media"); p.add_argument("policy", choices=P.MEDIA_POLICIES); p.set_defaults(f=cmd_media)
     p = sp.add_parser("migrate"); p.add_argument("--from", dest="src", default="design"); p.add_argument("--dry-run", action="store_true")
     p.set_defaults(f=lambda a: __import__("migrate").run(a))
     sp.add_parser("status").set_defaults(f=cmd_status)
-    p = sp.add_parser("context"); p.add_argument("--json", action="store_true", required=True); p.set_defaults(f=cmd_context)
+    p = sp.add_parser("context"); p.add_argument("--json", action="store_true", required=True)
+    p.add_argument("--section", choices=["decisions", "unacked", "blockers", "open", "queued", "inherited"])
+    p.add_argument("--offset", type=int, default=0); p.add_argument("--limit", type=int, choices=range(1, 21), default=5)
+    p.add_argument("--compact", action="store_true", help="仅输出恢复入口；省略重复的完整状态与文件列表")
+    p.set_defaults(f=cmd_context)
     p = sp.add_parser("next"); p.add_argument("--json", action="store_true"); p.set_defaults(f=cmd_next)
     p = sp.add_parser("block"); p.add_argument("--reason", required=True); p.add_argument("--tried", required=True)
     p.add_argument("--needs", required=True); p.set_defaults(f=cmd_block)
@@ -769,9 +956,12 @@ def main():
     p.add_argument("--by", default="user", choices=["user", "agent"])
     p.add_argument("--setting", help="做成设置项时保留的选项，逗号分隔；--choice 为默认值"); p.set_defaults(f=cmd_record)
     a = ap.parse_args()
-    if a.root is None:
-        a.root = P.find_root() or os.path.abspath(P.DIRNAME)
-    a.f(a)
+    a.phase = a.phase or os.environ.get("TASTE_DESIGN_PHASE")
+    try:
+        a.root = P.resolve_root(a.root, a.phase, creating=a.cmd in ("init", "phase"))
+        a.f(a)
+    except ValueError as e:
+        sys.exit(f"[gate] {e}")
 
 
 if __name__ == "__main__":

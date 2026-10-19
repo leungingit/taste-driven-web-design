@@ -81,9 +81,10 @@ def templates(html):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", default=None)
+    ap.add_argument("--phase", default=None)
     ap.add_argument("--width", type=int, default=1440)
     a = ap.parse_args()
-    root = a.root or P.default_root()
+    root = P.resolve_root(a.root, a.phase)
     vp = os.path.join(root, "work", "variants", "variants.html")
     if not os.path.exists(vp):
         sys.exit("[variants] 找不到 work/variants/variants.html")

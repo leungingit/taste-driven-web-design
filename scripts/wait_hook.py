@@ -50,7 +50,10 @@ def main():
         ev = json.load(sys.stdin)
     except Exception:
         ev = {}
-    root = waitlib.find_root(ev.get("cwd") or os.getcwd())
+    try:
+        root = waitlib.find_root(ev.get("cwd") or os.getcwd(), os.environ.get("TASTE_DESIGN_PHASE"))
+    except ValueError as e:
+        allow(f"设计期选择失败，本次不自动续跑：{e}")
     if not root:
         allow()
     flow = workflow_next(root)

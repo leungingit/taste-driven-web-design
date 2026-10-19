@@ -24,8 +24,8 @@ STATUS = {
 }
 
 
-def find_root(start="."):
-    return P.find_root(start)
+def find_root(start=".", phase=None):
+    return P.find_root_phase(start, phase or os.environ.get("TASTE_DESIGN_PHASE"))
 
 
 def _p(root, name):
@@ -42,7 +42,7 @@ def load_json(p, default=None):
 
 
 def paused(root):
-    return os.path.exists(_p(root, ".paused"))
+    return os.path.exists(P.runtime(root, ".paused"))
 
 
 def set_paused(root, on):
@@ -55,7 +55,7 @@ def set_paused(root, on):
 
 
 def agent_waiting(root, fresh=6):
-    p = _p(root, ".agent-waiting")
+    p = P.runtime(root, ".agent-waiting")
     return os.path.exists(p) and time.time() - os.path.getmtime(p) < fresh
 
 
@@ -73,7 +73,7 @@ def heartbeat(root, who):
 
 
 def server_alive(root):
-    info = load_json(_p(root, ".server.json"))
+    info = load_json(P.runtime(root, ".server.json"))
     if not info:
         return False
     try:
@@ -102,11 +102,11 @@ def save_runtime(root, name, value):
 
 
 def acked(root):
-    return load_json(_p(root, ".agent-acked.json"), {}) or {}
+    return load_json(P.runtime(root, ".agent-acked.json"), {}) or {}
 
 
 def delivered(root):
-    return load_json(_p(root, ".agent-delivered.json"), {}) or {}
+    return load_json(P.runtime(root, ".agent-delivered.json"), {}) or {}
 
 
 def ack_answer(root, did, ts):
@@ -148,7 +148,7 @@ def decision_notice(root, snapshot):
     """生成等待前应转达给用户的入口和当前可作答项，不将排队项冒充已开放。"""
     st = load_json(os.path.join(root, P.STATE), {}) or {}
     channel = st.get("channel", "web")
-    info = load_json(_p(root, ".server.json"), {}) or {}
+    info = load_json(P.runtime(root, ".server.json"), {}) or {}
     limit = info.get("max_open", 3) if channel == "web" else 3
     items = [{"id": q["id"], "title": q.get("title", q["id"])} for q in snapshot["open"][:limit]]
     url, path = None, None

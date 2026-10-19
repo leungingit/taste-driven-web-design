@@ -30,9 +30,10 @@ JS_CONTRAST = """(pairs) => {
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", default=None)
+    ap.add_argument("--phase", default=None)
     ap.add_argument("--widths", default="1440,375")
     a = ap.parse_args()
-    root = a.root or P.default_root()
+    root = P.resolve_root(a.root, a.phase)
     spec = TH.load(root)
     if not spec:
         sys.exit(f"[theme] 找不到 {TH.AXES}")

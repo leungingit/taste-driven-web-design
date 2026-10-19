@@ -130,6 +130,117 @@ class ContinuityTests(unittest.TestCase):
         self.assertEqual(payload["status"], "waiting")
         self.assertEqual(payload["open"], ["验收"])
 
+    def test_multi_phase_requires_explicit_phase_and_isolates_state(self):
+        """多期项目必须指定 phase；每期有独立状态、答案和继承基线。"""
+        multi_tmp = tempfile.TemporaryDirectory(prefix="taste-multi-phase-")
+        self.addCleanup(multi_tmp.cleanup)
+        project = Path(multi_tmp.name)
+        container = project / P.DIRNAME
+        def multi(*args, ok=True):
+            result = subprocess.run([sys.executable, str(SCRIPTS / "gate.py"), *args],
+                                    cwd=project, text=True, capture_output=True, timeout=10)
+            if ok:
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            return result
+
+        multi("init", "--phase", "P1", "--name", "第一期")
+        multi("phase", "add", "P2", "--name", "第二期",
+              "--parent", "P1", "--inherit", "shared/brand.md")
+        phases = json.loads(multi("phase", "list", "--json").stdout)
+        self.assertEqual([x["id"] for x in phases["phases"]], ["P1", "P2"])
+        p1 = container / P.PHASES / "P1"
+        p2 = container / P.PHASES / "P2"
+        self.assertEqual(gate.load_state(str(p1))["stage"], 0)
+        self.assertEqual(gate.load_state(str(p2))["stage"], 0)
+        def write(root, rel, value):
+            path = root / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(value, ensure_ascii=False), encoding="utf-8")
+
+        write(p1, P.SCOPE, {
+            "mode": "new", "product_type": "site", "scope": "single",
+            "layout_freedom": "keep", "track": "fast", "pages": ["首页一"],
+            "asset_types": [], "references": [], "source_dirs": [], "user_customizable": False})
+        write(p2, P.SCOPE, {
+            "mode": "new", "product_type": "site", "scope": "single",
+            "layout_freedom": "keep", "track": "fast", "pages": ["首页二"],
+            "asset_types": [], "references": [], "source_dirs": [], "user_customizable": False})
+        (p1 / P.PROGRESS).write_text("对应阶段：0\n当前任务：P1\n", encoding="utf-8")
+        (p2 / P.PROGRESS).write_text("对应阶段：0\n当前任务：P2\n", encoding="utf-8")
+        one = json.loads(multi("--phase", "P1", "context", "--json", "--compact").stdout)
+        two = json.loads(multi("--phase", "P2", "context", "--json", "--compact").stdout)
+        self.assertEqual(one["phase"], "P1")
+        self.assertEqual(two["phase"], "P2")
+        self.assertIn("首页一", (p1 / P.SCOPE).read_text())
+        self.assertIn("首页二", (p2 / P.SCOPE).read_text())
+        self.assertEqual([Path(x["path"]).resolve() for x in two["inherited"]],
+                         [(container / "shared/brand.md").resolve()])
+        self.assertTrue(two["inherited"][0]["exists"])
+        ambiguous = multi("context", "--json", ok=False)
+        self.assertNotEqual(ambiguous.returncode, 0)
+        self.assertIn("--phase", ambiguous.stderr)
+
+    def test_multi_phase_missing_inheritance_blocks_scope_gate(self):
+        """继承路径必须真实存在；缺少共享基线不能靠本期答案放行。"""
+        multi_tmp = tempfile.TemporaryDirectory(prefix="taste-multi-inherit-")
+        self.addCleanup(multi_tmp.cleanup)
+        project = Path(multi_tmp.name)
+        container = project / P.DIRNAME
+        init = subprocess.run([sys.executable, str(SCRIPTS / "gate.py"), "init", "--phase", "P1",
+                               "--name", "第一期", "--inherit", "shared/brand.md"],
+                              cwd=project, text=True, capture_output=True, timeout=10)
+        self.assertEqual(init.returncode, 0, init.stdout + init.stderr)
+        root = container / P.PHASES / "P1"
+        (container / "shared" / "brand.md").unlink()
+        scope = {"mode": "new", "product_type": "site", "scope": "single",
+                 "layout_freedom": "keep", "track": "fast", "pages": ["首页"],
+                 "asset_types": [], "references": [], "source_dirs": [], "user_customizable": False,
+                 "phase_relation": "independent", "inherit_mode": "explicit",
+                 "inherits": ["shared/brand.md"], "start_stage": 0}
+        (root / P.SCOPE).write_text(json.dumps(scope, ensure_ascii=False), encoding="utf-8")
+        probs = gate.blockers(str(root), gate.load_state(str(root)), 0)
+        self.assertTrue(any("继承基线不存在" in x for x in probs), probs)
+
+    def test_multi_phase_scope_defines_resume_point_and_incremental_track(self):
+        """增量期从已声明起点开始；起点不等于沿用父期验收。"""
+        from stages import plan, validate_phase_scope
+        scope = {"mode": "redesign", "product_type": "site", "scope": "sample-then-rollout",
+                 "layout_freedom": "keep", "track": "fast", "user_customizable": False,
+                 "phase_relation": "extend", "inherit_mode": "shared",
+                 "inherits": ["shared/brand.md"], "start_stage": 3,
+                 "pages": ["首页"], "asset_types": [], "references": [], "source_dirs": []}
+        self.assertEqual(validate_phase_scope(scope, {"inherits": ["shared/brand.md"]}), [])
+        self.assertEqual(plan(scope)["sequence"], [0, 3, 4, 5, 6, 7, 8, 9])
+        self.assertIn(5, plan(scope)["optional"])
+        scope["start_stage"] = 1
+        self.assertTrue(any("start_stage" in x for x in validate_phase_scope(
+            scope, {"inherits": ["shared/brand.md"]})))
+
+    def test_scope_gate_enters_declared_start_stage(self):
+        """增量期通过阶段 0 后直接进入声明的起点，不停在被省略的阶段 1。"""
+        self.state(stage=0, passed=[], sequence=list(range(10)))
+        scope = {"mode": "redesign", "product_type": "site", "scope": "sample-then-rollout",
+                 "layout_freedom": "rearrange", "track": "fast", "user_customizable": False,
+                 "phase_relation": "extend", "inherit_mode": "none", "inherits": [], "start_stage": 3,
+                 "pages": ["首页"], "asset_types": [], "references": [], "source_dirs": []}
+        self.write(P.SCOPE, scope)
+        baseline = self.root / P.BASELINE / "首页.png"
+        baseline.parent.mkdir(parents=True, exist_ok=True)
+        baseline.write_bytes(b"png")
+        for rel in (f"{P.BRIEF}/brief.md", f"{P.BRIEF}/traits.md"):
+            self.write(rel, "版本：1\n同步至闸门：0\n")
+        self.question("范围确认", stage=0, answered=True, role="scope")
+        answers = waitlib.new_answers(str(self.root))
+        waitlib.deliver(str(self.root), answers)
+        waitlib.ack_answer(str(self.root), "范围确认", answers[0]["ts"])
+        st = gate.load_state(str(self.root))
+        st.update({"sequence": [0, 3, 4, 5, 6, 7, 8, 9], "merged": {}, "optional": [5]})
+        gate.save_state(str(self.root), st)
+        probs = gate.blockers(str(self.root), gate.load_state(str(self.root)), 0)
+        self.assertFalse(any("gate 类型" in x for x in probs), probs)
+        self.cli("gate.py", "pass", "0")
+        self.assertEqual(gate.load_state(str(self.root))["stage"], 3)
+
     def test_context_is_read_only_and_stale_progress_cannot_advance_stage(self):
         """独立进程恢复以真实状态为准，不把工作记录或索引当作落实凭据。"""
         self.question(answered=True)
@@ -211,11 +322,99 @@ class ContinuityTests(unittest.TestCase):
         records = {x["path"]: x["exists"] for x in payload["records"]}
         self.assertFalse(records[str(self.root / P.PROGRESS)])
         self.assertFalse(records[str(self.root / P.NOTES)])
+        self.assertEqual(payload["checkpoint"]["status"], "missing")
+        self.assertEqual(payload["recovery_action"], "rebuild-checkpoint")
         self.assertEqual(payload["history_index"], str(self.root / P.SUMMARY / "README.md"))
         self.assertNotIn("只在按需读取时出现的历史全文", result.stdout)
         for decision in payload["decisions"]:
             self.assertTrue(Path(decision["question"]).is_file())
             self.assertTrue(Path(decision["answer"]).is_file())
+
+    def test_context_budget_and_pages_survive_growing_history_and_current_answers(self):
+        """大量历史与本阶段答案不膨胀默认恢复；分页完整，查询不标记交付。"""
+        self.write(P.PROGRESS, "对应阶段：2\n当前任务：核对首页灰模\n下一步：打开选定灰模确认导航\n")
+        for i in range(8):
+            self.question(f"D{i:04}", answered=True)
+        small = self.cli("gate.py", "context", "--json").stdout
+        for i in range(8, 100):
+            self.question(f"D{i:04}", answered=True)
+        for i in range(1000):
+            self.question(f"H{i:04}", stage=1, answered=True)
+        self.answer("D0000")
+        answer_path = self.root / P.DECISIONS / "D0000" / "answer.json"
+        answer = json.loads(answer_path.read_text())
+        answer["note"] = "必须完整交付的用户备注" * 1000
+        self.write(str(answer_path.relative_to(self.root)), answer)
+        large = self.cli("gate.py", "context", "--json").stdout
+        payload = json.loads(large)
+        self.assertLess(len(large), 12000)
+        self.assertLess(len(large) - len(small), 1500)
+        self.assertEqual(len(payload["decisions"]), 5)
+        self.assertEqual(payload["pagination"]["decisions"], {"total": 100, "next_offset": 5})
+        self.assertEqual(payload["pagination"]["unacked"]["total"], 100)
+        self.assertNotIn("必须完整交付的用户备注", large)
+        self.assertEqual(waitlib.delivered(str(self.root)), {})
+        ids, offset = [], 0
+        while offset is not None:
+            page = json.loads(self.cli("gate.py", "context", "--json", "--section", "decisions",
+                                       "--offset", str(offset), "--limit", "20").stdout)
+            ids.extend(d["id"] for d in page["items"])
+            offset = page["next_offset"]
+        self.assertEqual(ids, [f"D{i:04}" for i in range(100)])
+        full = json.loads(self.cli("gate.py", "next", "--json").stdout)
+        self.assertEqual(next(a for a in full["new"] if a["id"] == "D0000")["note"], answer["note"])
+        self.assertEqual(len(full["new"]), 100)
+        self.assertEqual(waitlib.acked(str(self.root)), {})
+        self.assertEqual(gate.load_state(str(self.root))["stage"], 2)
+
+    def test_context_checkpoint_checks_and_explicit_preview(self):
+        """模板、错阶段及超长记录都有明确提示，不把预览当作语义校验。"""
+        def context():
+            return json.loads(self.cli("gate.py", "context", "--json").stdout)
+        self.assertEqual(context()["checkpoint"]["status"], "needs-review")
+        self.write(P.PROGRESS, "对应阶段：9\n当前任务：交付\n")
+        self.assertFalse(context()["checkpoint"]["stage_matches"])
+        self.assertEqual(context()["recovery_action"], "rebuild-checkpoint")
+        text = "对应阶段：2\n当前任务：核对灰模\n" + "当前任务的证据链接\n" * 1000
+        self.write(P.PROGRESS, text)
+        payload = context()
+        self.assertEqual(payload["checkpoint"]["status"], "available")
+        self.assertTrue(payload["checkpoint"]["truncated"])
+        self.assertEqual(payload["checkpoint"]["text"], text[:3000])
+        self.assertEqual((self.root / P.PROGRESS).read_text(), text)
+
+    def test_context_groups_long_blockers_but_details_preserve_original(self):
+        """概览只给短示例，具体故障可定点完整取回。"""
+        self.state(stage=3, sequence=[0, 1, 2, 3, 4, 9], passed=[0, 1, 2])
+        self.write("work/variants/variants.html", '<div data-intensity="大胆">样张</div>')
+        problem = "需要核对具体布局证据" * 500
+        self.write("work/variants/layout-check.json", {"layout_freedom": "rearrange", "variants": [
+            {"id": "V1", "intensity": "大胆", "problems": [problem]}], "variants_mtime": time.time()})
+        payload = json.loads(self.cli("gate.py", "context", "--json").stdout)
+        group = next(g for g in payload["blocker_groups"] if g["category"] == "方案检查")
+        self.assertTrue(group["example"]["truncated"])
+        self.assertNotIn(problem, json.dumps(payload, ensure_ascii=False))
+        page = json.loads(self.cli("gate.py", "context", "--json", "--section", "blockers").stdout)
+        self.assertIn(f"方案 V1（大胆）：{problem}", page["items"])
+
+    def test_stage3_rejects_report_from_other_layout_policy(self):
+        """已批准保留布局时不能沿用旧重排报告；重跑报告也不自动验收。"""
+        self.state(stage=3, sequence=[0, 1, 2, 3, 4, 9], passed=[0, 1, 2])
+        scope = json.loads((self.root / P.SCOPE).read_text())
+        scope["layout_freedom"] = "keep"
+        self.write(P.SCOPE, scope)
+        self.write("work/variants/variants.html", '<div data-intensity="大胆">样张</div>')
+        report = {"layout_freedom": "rearrange", "variants": [], "variants_mtime": time.time()}
+        self.write("work/variants/layout-check.json", report)
+        first = gate.blockers(str(self.root), gate.load_state(str(self.root)), 3)
+        self.assertTrue(any("布局自由度与 layout-check.json 不一致" in x for x in first))
+        report["layout_freedom"] = "keep"
+        self.write("work/variants/layout-check.json", report)
+        second = gate.blockers(str(self.root), gate.load_state(str(self.root)), 3)
+        self.assertFalse(any("布局自由度与 layout-check.json 不一致" in x for x in second))
+        self.assertTrue(any("方向选择决策" in x for x in second))
+        self.assertTrue(any("本阶段没有 gate 类型的验收决策" in x for x in second))
+        self.assertEqual(gate.workflow_next(str(self.root))["status"], "working")
 
     def test_partial_application_survives_recovery_and_new_answer_version(self):
         """部分落实后换进程，完整要求仍可重交，新版本不能被旧确认吞掉。"""

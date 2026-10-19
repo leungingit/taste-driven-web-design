@@ -20,7 +20,7 @@ import paths as P  # noqa: E402
 
 
 def find_design_root(path):
-    return P.find_root(os.path.dirname(os.path.abspath(path)))
+    return P.find_root_for_path(path)
 
 
 def block(msg):

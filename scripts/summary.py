@@ -197,7 +197,8 @@ def rebuild(root):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", default=None)
+    ap.add_argument("--phase", default=None)
     ap.add_argument("cmd", choices=["rebuild"])
     a = ap.parse_args()
-    root = a.root or P.default_root()
+    root = P.resolve_root(a.root, a.phase)
     print(f"[summary] 已生成 {rebuild(root)} 张决策摘要卡 → {os.path.join(root, P.SUMMARY)}")

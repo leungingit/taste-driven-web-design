@@ -1,5 +1,26 @@
 # 阶段、轨道与变更管理
 
+## 多期项目
+
+需要 P1、P2、P3 的同一产品，必须把每一期建成独立流程实例：
+
+```bash
+python3 "$SKILL/scripts/gate.py" init --phase P1 --name "第一期" --channel web
+python3 "$SKILL/scripts/gate.py" phase add P2 --name "第二期" \
+  --parent P1 --inherit shared/brand.md --inherit shared/design-system
+python3 "$SKILL/scripts/gate.py" phase list --json
+python3 "$SKILL/scripts/gate.py" --phase P2 context --json --compact
+```
+
+- 每期都在 `.taste-design/phases/<ID>/` 下拥有自己的 `record/state.json`、`scope.json`、决策、答案、`progress.md`、产物与运行态；P1 的 `passed` 不能自动成为 P2 的 `passed`。
+- 多期项目存在多个实例时，未写 `--phase` 必须报错，不能默认选最新一期。只有一个实例时才允许唯一解析。
+- `phase.json` 只记录 `parent_phase` 与 `inherits`。继承路径先核对实际文件；本期的范围、起点阶段和复用旧成果的方式仍需用户决定。`gate.py` 不读取父期状态来放行本期闸门。
+- 多期用 `gate.py --phase ID ...`；`decide_server.py`、`summary.py`、`variants_check.py`、`theme_matrix.py` 同样接受 `--phase`。Hook 用 `TASTE_DESIGN_PHASE` 指定期；未设置时在多期项目中不会猜期或自动续跑。
+- `--root` 支持项目、容器和具体期；显式 `--phase` 优先，未指定时可沿用当前目录所属期。`init` 的 `--phase` 可写在子命令前或后；普通非设计目录中的 hook 不拦截结束。
+- `shared/brand.md`、`shared/design-system/` 只放跨期稳定的已确认基线。旧阶段的验收、待复核项、本期专属样张和未完成工作不得移入共享层。
+- 从单期升级为多期不自动搬运状态。需要迁移时先备份原 `.taste-design/`，由用户确认映射关系；没有迁移前，原单期项目继续按单期运行。
+- 本期起点在阶段 0 的 `scope.json` 中写明 `start_stage`（0 / 2 / 3 / 4 / 5 / 6），并通过 `phase_relation` 与 `inherit_mode` 说明来源。通过闸门 0 后进入轨道中从起点开始的首个有效阶段；起点为 0 时走完整起始流程。起点只表示从哪里制作，不表示旧期验收自动沿用。`source_dirs` 仍相对项目根目录，快照分别保存在各期 cache 中。
+
 ### 0.3 阶段与闸门
 | # | 阶段 | 必需产物（gate.py 检查） | 特别检查 |
 |---|---|---|---|
@@ -18,6 +39,8 @@
 
 闸门通过时，gate.py 会把 scope.json 里 `source_dirs` 列出的源码目录（生成脚本、组件源码等）快照到 `cache/snapshots/gate-N/`（本地备份，不提交），保证每个版本都能从源码重建。
 
+多期项目额外检查：闸门 0 会核对 `phase.json.inherits` 的路径实际存在；继承不改变本期 `scope.pages`、页面范围和验收条件。没有 `phase.json` 的单期项目不做这项检查。
+
 ### 0.4 轨道：闸门 0 通过时按 record/scope.json 确定
 | 条件 | 效果 |
 |---|---|
@@ -33,6 +56,7 @@
 - `record/brief/brief.md` 和 `record/brief/traits.md` 是活文档，任何阶段都可以改。每次过闸门前，必须把它们更新到最新结论：**删掉已被推翻的内容**（不是加一行"已变更"），升版本号，并写一行 `同步至闸门：N`。gate.py 不放行未同步的闸门。
 - `record/decisions.md` 里标为"待定"的行，在结论出来后与结论行合并成一行，不要留两行。
 - 简报中的每条约束都要能追溯到用户的原话或某个决策 ID。智能体想加的约束（例如"不改信息层级""保留现有配色"）**不能直接写进简报**，必须作为决策让用户选。
+- brief/traits 只保留当前有效结论、尚待处理项和来源链接。回退后重新核对“当前完成状态”，不能保留已作废阶段仍通过的说法。旧阶段实现细节、失败尝试和收束过程移入 `record/history/` 的相关记录并保留链接，不在活文档重复展开；归档不删除原题目、答案或样张，也不把历史全部标成有效约束。
 
 ## 10. 变更管理
 用户提出与已通过阶段不一致的要求时：

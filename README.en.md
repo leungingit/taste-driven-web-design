@@ -116,7 +116,7 @@ Open the local address printed in the terminal to view, compare, and submit a de
 
 ## Project records and recovery
 
-Design process files live in `.taste-design/` inside the target project. Finished code goes into the project's actual source locations.
+Design process files for a single-phase project live in `.taste-design/` inside the target project. Finished code goes into the project's actual source locations.
 
 ```text
 .taste-design/
@@ -128,14 +128,49 @@ Design process files live in `.taste-design/` inside the target project. Finishe
 
 `record/` and `work/` are intended to stay with the project. `media/` is ignored by default and can instead use Git LFS or ordinary commits. `cache/` is not committed. Committing requires the user's authorization.
 
+For a product delivered in multiple phases, each phase is an independent workflow instance while stable brand and design-system decisions live in a shared layer:
+
+```text
+.taste-design/
+├── project.json                    # Phase list, parent links, and explicit inheritance
+├── phases/
+│   ├── P1-foundation/{record,work,media,cache}/
+│   └── P2-account/{record,work,media,cache}/
+└── shared/
+    ├── brand.md
+    └── design-system/
+```
+
+```bash
+skill_dir="/path/to/taste-driven-web-design"
+python3 "$skill_dir/scripts/gate.py" init --phase P1 --name "Phase 1"
+python3 "$skill_dir/scripts/gate.py" phase add P2 --name "Phase 2" \
+  --parent P1 --inherit shared/brand.md
+python3 "$skill_dir/scripts/gate.py" phase list --json
+python3 "$skill_dir/scripts/gate.py" --phase P2 context --json --compact
+```
+
+Each phase has separate stage state, scope, answers, approvals, and current work. Passing P1 does not mark P2 as approved. When more than one phase exists, commands must specify `--phase` or set `TASTE_DESIGN_PHASE`; the scripts never guess the latest phase. The shared layer holds only stable, approved brand and design-system decisions, not one phase's progress or history.
+
 To recover, run the following from the target project's root, replacing the example path with the actual skill location:
 
 ```bash
 skill_dir="/path/to/taste-driven-web-design"
-python3 "$skill_dir/scripts/gate.py" context --json
+python3 "$skill_dir/scripts/gate.py" context --json --compact
 ```
 
-This command only returns a recovery index. It does not acknowledge answers or advance stages. The agent must read the relevant records, inspect actual artifacts, and then obtain complete answers through `next --json` before continuing. See the [context and recovery protocol](references/continuity.md).
+This command returns only the recovery entry points: current phase, flow status, checkpoint availability, missing inherited files, missing records, and pagination. Use the full `context --json` output for diagnostics, or query a section page when needed. It does not acknowledge answers or advance stages. The agent must read the relevant records, inspect actual artifacts, and then obtain complete answers through `next --json` before continuing. See the [context and recovery protocol](references/continuity.md).
+
+### Reducing token use
+
+- Start recovery with `context --json --compact`; request the full overview only for diagnostics.
+- Load the current phase's `progress.md`, `scope.json`, `constraints.yaml`, and stage guide. Locate history by decision ID instead of reading every answer or sample.
+- Review thumbnails or side-by-side samples first. Open originals only when texture, detail, or pixel-level repair is being judged.
+- Keep each decision batch to 2–3 choices that truly need user judgment; record secondary defaults with `assume` and review them at the stage gate.
+- Keep `progress.md` concise and overwrite it as work advances. Link to history rather than appending a chat log.
+- Use targeted searches, excerpt reads, pagination, and error summaries instead of repeatedly printing complete JSON or long files.
+
+`--compact` removes repeated indexes; it does not omit pending answers or hard constraints.
 
 ### Syncing across machines and media policies
 

@@ -51,12 +51,16 @@
 - id: R1
   url: https://example.com
   source: user            # user | agent
+  role: target           # target 目标 | negative 反例 | structure 空间/布局依据 | implementation 当前实现
+  confirmed_by: D04-ref   # 决策 ID 或用户原话出处；未确认则明确标待确认
   borrow: [color, layout] # color | layout | typography | texture | motion | illustration | tone | interaction
   like: "首屏大字压在插画上的层次感"
   avoid: "下半页卡片太模板化"
   weight: high            # high | mid | low
 ```
 图片命名 `I03_粗颗粒纸张.jpg` 并用 `file` 登记；视频抽帧到 `media/keyframes/` 且用户补一句动效描述；品牌资产标明不可变项并写入 constraints.yaml。
+
+素材职责按用户确认填写；一张图承担多个用途时逐项说明。反例只用于检查应避免的问题，当前运行截图只证明现状，都不能自动成为目标或制作底稿；结构依据不能替代最终画风。旧登记缺职责时，针对当前任务核对原始来源并补齐，不推测也不遍历全部素材。制作前核对所用文件的职责；用户纠正后同步 refs、当前有效简报及 progress，历史错误留作来源记录，不继续与新结论并列生效。
 
 ### 1.6 特征表 record/brief/traits.md
 | 编号 | 维度 | 特征描述 | 来源 | 权重 |

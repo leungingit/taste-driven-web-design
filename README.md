@@ -116,7 +116,7 @@ python3 docs/demo/serve.py
 
 ## 项目记录与恢复
 
-设计过程保存在目标项目的 `.taste-design/`，成品代码写入项目实际源码位置。
+单期设计过程保存在目标项目的 `.taste-design/`，成品代码写入项目实际源码位置。
 
 ```text
 .taste-design/
@@ -128,14 +128,53 @@ python3 docs/demo/serve.py
 
 `record/` 和 `work/` 用于随项目保存；`media/` 默认不提交，可切换为 Git LFS 或直接提交；`cache/` 不提交。提交由用户授权后执行。
 
+同一产品需要一期、二期、三期时，每一期使用独立的设计流程实例，共享跨期稳定的品牌与设计系统：
+
+```text
+.taste-design/
+├── project.json                    # 期列表、父期与显式继承
+├── phases/
+│   ├── P1-foundation/{record,work,media,cache}/
+│   └── P2-account/{record,work,media,cache}/
+└── shared/
+    ├── brand.md
+    └── design-system/
+```
+
+```bash
+skill_dir="/path/to/taste-driven-web-design"
+python3 "$skill_dir/scripts/gate.py" init --phase P1 --name "第一期"
+python3 "$skill_dir/scripts/gate.py" phase add P2 --name "第二期" \
+  --parent P1 --inherit shared/brand.md
+python3 "$skill_dir/scripts/gate.py" phase list --json
+python3 "$skill_dir/scripts/gate.py" --phase P2 context --json --compact
+```
+
+每期的阶段、范围、答案、验收和当前工作完全隔离；P1 通过不会自动把 P2 标成已验收。多期项目存在多个实例时必须用 `--phase` 或 `TASTE_DESIGN_PHASE` 明示当前期，脚本不会猜“最新一期”。`shared/` 只放跨期稳定、已确认的品牌和设计系统，不放某期的进度或历史归档。
+
+`--root` 可以指向项目、`.taste-design/` 或具体期；显式 `--phase` 优先于路径所在期。已经位于某一期目录内且未指定 `--phase` 时，沿用该目录所属期。`init --phase P2` 同样可以追加新期；已有期的状态不会被复制到新期。
+
 恢复时，在目标项目根目录运行以下命令，将示例路径换成实际技能路径：
 
 ```bash
 skill_dir="/path/to/taste-driven-web-design"
-python3 "$skill_dir/scripts/gate.py" context --json
+python3 "$skill_dir/scripts/gate.py" context --json --compact
 ```
 
-该命令只输出恢复索引，不确认答案或推进阶段。智能体需读取相关记录、核对实际产物，再通过 `next --json` 获取完整答案并继续处理。详见 [上下文与恢复协议](references/continuity.md)。
+该命令只输出恢复入口：当前期、流程状态、工作记录是否可用、继承文件是否缺失、记录缺失及分页入口。需要诊断时再运行不带 `--compact` 的 `context --json`，或按 `--section` 分页。预览截短会明确标记，不确认答案或推进阶段。智能体优先核对当前任务、有效约束和直接依赖，缺少 `record/progress.md` 时先按事实补建；定位后执行一个小步骤，不重读全部历史、图片或脚本源码。待落实答案仍通过 `next --json` 完整读取。详见 [上下文与恢复协议](references/continuity.md)。
+
+### 减少 token 消耗
+
+- 恢复先运行 `context --json --compact`；只在需要诊断时用完整概览。多期项目按 `--phase` 只载入当前期。
+- 按职责读取 `progress.md`、`scope.json`、`constraints.yaml` 和当前阶段说明；历史用决策 ID 与摘要卡定位，不遍历全部答案或样张。
+- 图片先看摘要缩略图或决策页对比视图；只在判断纹理、细节或修复像素时读取原图。
+- 每轮只开放 2–3 个确实需要用户判断的决策；可推导的次要事项用 `assume` 记录，随阶段验收一次确认。
+- `progress.md` 保持精简并覆盖更新；历史证据改为链接或 ID，不把工作记录写成聊天日志。
+- 工具输出优先用定点搜索、段落读取、分页和错误摘要，不重复粘贴完整 JSON 或长文件。
+
+`--compact` 只减少重复索引，不省略待落实答案与硬约束；完整输出仍可按需获取。
+
+继承清单也按 `--limit` 分页，默认首屏 5 项；查看余项用 `context --json --section inherited --offset 5`，并按返回的 `next_offset` 续读。`next --json` 在 `new` 中完整交付答案，省略重复的 `new_text` 文字摘要；非 JSON 输出和等待 hook 仍保留摘要。字符量对照与回归结果见[多期与输出量验证记录](docs/verification-multi-phase.md)。
 
 ### 跨机器同步与素材策略
 

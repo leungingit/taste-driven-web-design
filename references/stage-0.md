@@ -2,6 +2,8 @@
 
 开始前：`gate.py check 0`。这一阶段决定项目怎么走，**必须在出任何视觉方案之前完成**。
 
+本技能的阶段和布局检查面向网站、落地页与应用界面；原生界面可按 constraints.yaml 的 target 约定移植。游戏场景美术、角色建模、绑定与动画制作不直接套用网页区块的布局相似度。涉及这些任务时先明确本轮可适用的界面设计范围和交付边界；无法映射时指出不适用的阶段与所需制作流程，不为满足闸门把目标替换为网页样张或三维基础体，也不承诺现有检查能验收此类成品。
+
 ### S0.1 第一个决策：范围与自由度（role=scope）
 建一组非视觉决策（`visual: false`，同时开放），让用户一次回答：
 
@@ -13,6 +15,16 @@
 | 布局自由度 | 保留现有布局只换视觉 / 页内可重排 / 可重构页面结构（业务逻辑不变） | `layout_freedom`: keep / rearrange / restructure |
 | 流程轨道 | 完整轨道 / 快速轨道（简报与方向合并验收，playground 可跳过） | `track`: full / fast |
 | 外观是否开放 | 外观参数在设计期定死 / 也让最终用户在产品里调整（主题、配色、密度、动效开关等） | `user_customizable`: false / true；为 true 时 `customization_page` 填设置页名称，并列入本期页面。只有选 true，后续决策才能「做成设置项」（见 0.12） |
+
+多期项目还要确认**本期从哪里接续**，并在 `scope.json` 写入：
+
+| 问题 | 选项 | 写入 scope.json |
+|---|---|---|
+| 本期关系 | 独立新建 / 在上一期基础上增量演进 / 重构上一期已交付范围 | `phase_relation`: independent / extend / rework |
+| 复用基线 | 不继承 / 只复用品牌与设计系统 / 明确列出继承文件 | `inherit_mode`: none / shared / explicit；`inherits`: 相对 `.taste-design/` 的路径列表；决策需写成原题或答案的文件路径 |
+| 起点 | 从阶段 0 完整开始 / 沿用已确认品牌与布局，从灰模或样张开始 / 从原型、令牌或区块打磨开始 | `start_stage`: 0 / 2 / 3 / 4 / 5 / 6（必须说明被跳过的验收来源） |
+
+`start_stage` 只表示本期从哪里开始制作，不等于自动复用旧期验收。`phase_relation=extend` 或 `rework` 时，必须指出父期、被继承的产物和仍需重新验收的部分；不能把父期的 `passed` 直接抄成本期已通过。若继承基线被修改，先按变更管理确认影响范围。
 
 再从用户已给的信息里整理以下清单（不确定就作为问题加进决策）：
 - `pages`：**全部可导航的目的地**，不只是用户给的那一屏。从截图、现有代码、路由表里找出所有页面、分页（tab）、侧栏/顶栏入口、设置页及其分页、常用弹窗和抽屉，逐个让用户确认本期做不做。本期不做的也要列出：`{"name": "设置 → 账户", "in_scope": false, "reason": "下期"}`。
@@ -26,9 +38,13 @@
 {"mode": "redesign", "product_type": "app", "scope": "sample-then-rollout",
  "layout_freedom": "rearrange", "track": "fast",
  "user_customizable": true, "customization_page": "设置 → 外观",
+ "phase_relation": "extend", "inherit_mode": "shared", "inherits": ["shared/brand.md", "shared/design-system"],
+ "start_stage": 3,
  "pages": ["总览", "详情", "设置 → 外观", {"name": "设置 → 账户", "in_scope": false, "reason": "下期"}],
  "references": ["某部复古科幻电影"], "asset_types": ["头图", "插画"], "source_dirs": ["src/ui", "tools/gen"]}
 ```
+
+单期项目不必填写上述接续字段。多期项目的 `phase.json.inherits` 与本期 `scope.json.inherits` 必须一致，空列表也参与比较；`shared` 模式只允许 `shared/` 下的路径。绝对路径、`..` 路径段和越出容器的符号链接都会被拒绝。起点仍受轨道裁剪约束：例如声明 2 但保留布局省略灰模时，进入后继有效阶段；以 `next --json` 和通过闸门后的实际阶段为准。
 
 ### S0.2 改版项目先截现状基线
 `mode: redesign` 时，`media/baseline/` 里每个页面至少一张现状截图（`samples.py shot <页面地址> --out .taste-design/media/baseline/<页面>.png`，需要时加 `--width 375` 截手机）。这是**前置条件，不能跳过**：截图工具装不上或页面需要登录时，请用户提供截图或协助登录。

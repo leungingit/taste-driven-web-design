@@ -3,11 +3,33 @@ name: taste-driven-web-design
 description: 为网站、落地页和应用界面做有个人风格的视觉设计，也用于已有产品的视觉改版与全站铺开：范围与轨道→简报→灰模→视觉发散→原型与资产规范→令牌→打磨→全站铺开→质检→交付。脚本强制逐阶段准入，所有审美决策在带真实图片/样张的网页上由用户作答。
 ---
 
-# 有品味的网站设计流程（规范版 v16）
+# 有品味的网站设计流程（规范版 v18）
 
 一次调用覆盖已确认范围内的完整设计流程。用户提供素材、选择方向并验收；智能体负责阶段推进、等待接续、落实答案、验证与交付。用户不需要逐阶段发送“继续”。
 
-路径约定：`$SKILL` 是本技能目录。命令在项目根目录运行；设计过程文件均位于项目的 `.taste-design/`，下文 `record/`、`work/`、`media/`、`cache/` 均相对此目录。
+路径约定：`$SKILL` 是本技能目录。命令在项目根目录运行；单期项目的设计过程文件位于 `.taste-design/` 的 `record/`、`work/`、`media/`、`cache/`。多期项目位于 `.taste-design/phases/<ID>/`，下文所指的四个区均相对当前设计期；跨期稳定基线单独放在 `.taste-design/shared/`。
+
+## 多期项目（P1 / P2 / P3）
+
+同一产品有连续设计批次时，每一期是**独立流程实例**，不是同一 `state.json` 里的阶段号码，也不是在 `record/`、`work/` 下随手建 `p1/`、`p2/`。多期结构：
+
+```text
+.taste-design/
+├── project.json                    # 期列表、名称、父期与显式继承
+├── phases/<ID>/
+│   ├── record/  work/  media/  cache/
+│   └── record/phase.json           # 本期元数据
+└── shared/                         # 跨期稳定的品牌与设计系统
+    ├── brand.md
+    └── design-system/
+```
+
+- 新项目通过 `gate.py init --phase P1 --name 第一期` 开始；追加一期用 `gate.py phase add P2 --name 第二期 --parent P1 --inherit shared/brand.md`。查看：`gate.py phase list --json`。
+- 本期起点、与父期的关系和继承方式，在阶段 0 写入 `scope.json`：`phase_relation`、`inherit_mode`、`inherits`、`start_stage`。P2 可以在用户确认后从灰模、样张或令牌阶段开始，但跳过的旧期验收不会被算成本期验收。声明起点被轨道省略时，进入后继有效阶段。
+- 多期项目在项目根或容器中执行命令时带 `--phase ID`（或环境变量 `TASTE_DESIGN_PHASE`）；只有一期时脚本可唯一选择。在某一期内部可沿用该期，显式 `--phase` 优先；存在多期时禁止默认猜“最新一期”。
+- `shared/` 只存跨期稳定、已经确认的品牌与设计系统。范围、阶段、决策、验收、当前工作、交付必须留在各自 `phases/<ID>/`；不能因为 P1 通过就把 P2 标成已验收。
+- `phase.json` 的 `parent_phase` 只记来源，`inherits` 只登记明确继承的跨期路径。继承内容先核对实际文件；新建期仍从其已确认的 `scope.json`、`start_stage` 和验收方式开始，是否复用旧期成果要走用户决策，不能静默沿用旧验收。
+- 单期 `.taste-design/record/state.json` 布局继续兼容。不要把单期项目手改成多期；需要多期时新建多期容器，或另做一次性迁移并保留原记录。
 
 ## 全流程执行契约（每次启动或恢复先读）
 
@@ -18,13 +40,14 @@ description: 为网站、落地页和应用界面做有个人风格的视觉设�
 5. **统一下一步**：CLI、网页、hook 共用 `gate.py next --json` 的判定。不凭“这个阶段看起来结束了”自行收口。
 6. **正常收口条件**：`completed`；用户明确暂停；或已登记具体原因、已尝试措施和所需用户操作的真实外部阻塞。inline/static 通道可为等待真实答复结束交互回合；阶段 1 的补图邀请需要对话回复或附件时，也可在说明待回复内容并保存记录后结束本次交互。收到答复后继续原任务，不能宣称流程完成。等待属于流程中间状态。
 7. **能力边界**：配置了 hook 不代表它已生效，HTTP 服务存活也不代表智能体会被唤醒。只有真实宿主试验确认 hook 被调用且 `block` 被接受后，才能依赖 hook 接手。没有可靠接续机制时保持活跃回合等待；无法保持时如实说明限制并记录具体阻塞，不承诺自动恢复。
-8. **进度随事件落盘**：用户补充或纠正要求时立即记入 `record/notes.md`，标明来源、有效状态及替代关系；可验证的小步骤完成、进入等待或切换阶段时更新 `record/progress.md`。不等过闸门或上下文将满才整理。压缩后按恢复协议核对文件，不凭聊天摘要直接 ack 或过闸。
+8. **进度随事件落盘**：用户补充或纠正要求时立即记入 `record/notes.md`，标明来源、有效状态及替代关系；可验证的小步骤完成、进入等待或切换阶段时更新 `record/progress.md`。不等过闸门或上下文将满才整理。恢复时缺少或明显过时的工作记录，先按已核对事实补建；不以全历史扫描代替。压缩后按恢复协议核对文件，不凭聊天摘要直接 ack 或过闸。
+9. **恢复有终点**：确定当前任务、有效约束、待处理答案版本、直接相关产物和下一步后，立即执行一个可验证的小步骤。默认不遍历全部答案、历史、图片或脚本源码；有具体缺口才扩大读取。记录完整保存在磁盘，默认恢复不重放全过程。
 
 ## 启动、恢复与主循环
 
-1. 新项目运行 `python3 $SKILL/scripts/gate.py init`；有旧版 `design/state.json` 时先 `gate.py migrate`。已有项目保留现状，不重新初始化。
-2. 阅读 [上下文与恢复协议](references/continuity.md)，运行 `gate.py context --json`，按固定顺序读取当前记录与相关产物；再按 [阶段、轨道与变更管理](references/workflow.md) 和 `gate.py next --json` 接续。用户明确恢复已暂停任务时，先 `decide_server.py resume`；外部阻塞解决后 `gate.py unblock --reason …`。
-3. 按 [决策通道与文件协议](references/decisions.md) 自检展示能力，并把结果写进 `record/decisions.md`。按 [运行协议](references/runtime.md) 检查等待接续方式；默认使用活跃回合内 CLI 等待。
+1. 新单期项目运行 `python3 $SKILL/scripts/gate.py init`；新多期项目运行 `gate.py init --phase P1 --name 第一期`。有旧版 `design/state.json` 时先 `gate.py migrate`。已有项目保留现状，不重新初始化。
+2. 阅读 [上下文与恢复协议](references/continuity.md)，运行 `gate.py context --json --compact`；优先核对工作记录、有效约束和直接依赖，清单是定位入口，不是全部必读列表。需要更多细节时才用完整概览，或按 `context --json --section decisions|unacked|blockers|open|queued|inherited --offset N` 分页；预览不代表已完整读取。达到恢复终点后用 `gate.py next --json` 接续。用户明确恢复已暂停任务时，先 `decide_server.py resume`；外部阻塞解决后 `gate.py unblock --reason …`。
+3. 首次选择或变更通道时按 [决策通道与文件协议](references/decisions.md) 自检展示能力，结果写进 `record/decisions.md`；准备等待或恢复服务时读 [运行协议](references/runtime.md) 相关小节，默认使用活跃回合内 CLI 等待。恢复不重复加载已核实且未变化的整份协议。
 4. 只读当前阶段说明；涉及样例、动效、主题或素材管理时按下表阅读对应规范。运行 `gate.py check N` 后执行当前阶段工作。
 5. 根据 `next` 结果循环，直到符合收口条件：
 
@@ -39,6 +62,22 @@ description: 为网站、落地页和应用界面做有个人风格的视觉设�
 | `completed` | 输出最终成品、验证结果及确需人工完成的交付步骤 |
 
 `check` 失败表示不能执行所请求阶段的工作，应读取 next 修复当前阶段；不表示整个任务结束。运行中回答用户的状态问题、收到补充条件时，保留原目标并接着执行，除非用户明确暂停或取消。
+
+## Token 控制策略
+
+本流程的 token 成本主要来自重复读取协议、全量历史、完整图片和过大的工具输出，不在阶段数量本身。执行时遵守：
+
+1. **按需加载**：恢复先跑一次 `gate.py context --json --compact` 拿到当前期、阶段、checkpoint 和缺失入口；需要细节再读当前阶段说明、`progress.md`、`scope`、`constraints`。不要每轮重读整套 SKILL、README、全部 references。
+2. **只交付当前任务**：`next --json` 的 `new` 仍要完整读取，确保备注、数值、设置要求不漏；其余历史答案只按 ID 取。不要为了“了解背景”遍历所有 question / answer / summary。
+3. **图片按需查看**：决策页用缩略图和并排对比完成选择；智能体只查看当前要判断或要修改的样张。不要一次把全部方案原图塞回上下文；需要比较时先看缩略图，再定点看原图。
+4. **工具输出有界**：优先用 `rg` 定点搜索、`sed -n` 读段落、`--compact` / `--section` / `--offset` 分页。日志只保留错误行与关键前后文，不反复输出同一完整文件。
+5. **记录异步精简**：`progress.md` 只保留当前任务、有效结论与素材职责、直接产物和下一步；历史用链接或 ID。阶段过闸时删除被推翻的结论，而不是追加长篇变更日志。
+6. **决策分批**：同一轮最多开放 2–3 个相互独立、确实需要用户判断的问题；不要把整份问卷一次性铺开。能由已批准范围推导的细节用 `assume` 记录，随阶段验收一次确认。
+7. **共享层避免复制**：多期项目让 P2/P3 继承 `shared/` 的品牌和设计系统，不在每期重复同一份长文档；本期差异只写增量与来源。
+8. **恢复有终点**：能回答“当前任务、有效约束、待处理版本、直接产物、下一步”就停止检索并开始工作，不追求读完全部历史。
+9. **长会话交接**：上下文接近上限时，先更新 `progress.md` 和必要的 `notes.md`，记录当前期、阶段、待答 ID、直接产物与下一步，再继续或交接；不依赖聊天摘要恢复。
+
+`--compact` 只省略重复的概览字段，不省略待落实答案或硬约束。若确实需要完整状态，仍可运行不带 `--compact` 的 `context --json`；脚本测试和真实项目验证应覆盖两种输出。
 
 ## 回顾已完成的流程
 
@@ -74,7 +113,7 @@ python3 "$SKILL/scripts/decide_server.py" serve
 
 | 当前工作 | 阅读文件 |
 |---|---|
-| 全程：轨道、闸门、活文档、回退、无人值守 | [workflow.md](references/workflow.md) |
+| 确认轨道、过闸、多期、整理活文档、回退或无人值守 | [workflow.md](references/workflow.md)（多期或读取相关小节） |
 | 启动、压缩后恢复、会话交接、用户补充要求 | [continuity.md](references/continuity.md) |
 | 开始等待、接续工具会话、宿主 hook、答案确认、故障 | [runtime.md](references/runtime.md) |
 | 创建或展示决策、选择通道、JSON 与样例字段 | [decisions.md](references/decisions.md) |

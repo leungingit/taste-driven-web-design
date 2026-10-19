@@ -81,20 +81,67 @@ def validate_scope(sc):
     return errs
 
 
+def validate_phase_scope(sc, meta, container=None):
+    """多期项目的本期接续声明；单期返回空。"""
+    if not meta or not sc:
+        return []
+    errs = []
+    relation = sc.get("phase_relation")
+    if relation not in {"independent", "extend", "rework"}:
+        errs.append("多期项目的 scope.json 需要 phase_relation：independent / extend / rework")
+    inherit = sc.get("inherit_mode")
+    if inherit not in {"none", "shared", "explicit"}:
+        errs.append("多期项目的 scope.json 需要 inherit_mode：none / shared / explicit")
+    start = sc.get("start_stage")
+    if type(start) is not int or start not in {0, 2, 3, 4, 5, 6}:
+        errs.append("多期项目的 scope.json 需要 start_stage，取值 0 / 2 / 3 / 4 / 5 / 6；从阶段 0 完整开始也显式写 0")
+    for value in (meta.get("inherits", []), sc.get("inherits", [])):
+        if not isinstance(value, list) or any(not isinstance(x, str) for x in value):
+            errs.append("phase.json 与 scope.json 的 inherits 必须是路径字符串列表")
+            return errs
+        for rel in value:
+            try:
+                P.inheritance_path(container or os.path.abspath(P.DIRNAME), rel)
+            except ValueError as e:
+                errs.append(str(e))
+    declared = {os.path.normpath(x.replace("\\", "/")) for x in meta.get("inherits", [])}
+    scoped = {os.path.normpath(x.replace("\\", "/")) for x in sc.get("inherits", [])}
+    if inherit == "none" and (declared or scoped):
+        errs.append("inherit_mode 为 none 时不能再声明 inherits；若确需继承，先改 inherit_mode")
+    if inherit in {"shared", "explicit"} and not (declared or scoped):
+        errs.append(f"inherit_mode 为 {inherit} 时需要在 phase.json 或 scope.json 写明 inherits")
+    if declared != scoped:
+        errs.append(f"phase.json 与 scope.json 的 inherits 不一致：{sorted(declared)} ≠ {sorted(scoped)}")
+    if inherit == "shared" and any(not x.startswith("shared/") for x in declared | scoped):
+        errs.append("inherit_mode 为 shared 时只能继承 shared/ 内的路径；其他来源请使用 explicit")
+    return errs
+
+
 def plan(sc):
     """根据范围算出阶段序列、合并关系、可选阶段。"""
     seq = list(ALL)
     merged, optional = {}, []
     if sc is None:
         return {"sequence": seq, "merged": merged, "optional": optional}
+    if sc.get("phase_relation") and isinstance(sc.get("start_stage"), int):
+        start = sc["start_stage"]
+        if start:
+            seq = [0] + [s for s in seq if s >= start]
     if sc.get("layout_freedom") == "keep":
-        seq.remove(2)                      # 保留布局：不做灰模
+        if 2 in seq:
+            seq.remove(2)                  # 保留布局：不做灰模
     if sc.get("scope") == "single":
-        seq.remove(7)                      # 单页：不需要全站铺开
+        if 7 in seq:
+            seq.remove(7)                  # 单页：不需要全站铺开
     if sc.get("track") == "fast":
-        seq.remove(3)
-        merged[3] = 1                      # 快速轨道：方向选择并入简报闸门
-        if not sc.get("user_customizable"):
+        if 3 in seq:
+            seq.remove(3)
+            if 1 in seq:
+                merged[3] = 1              # 快速轨道：方向选择并入简报闸门
+            else:
+                seq.append(3)
+                seq.sort()
+        if not sc.get("user_customizable") and 5 in seq:
             optional.append(5)             # playground 可跳过，但要进待复核清单；外观开放给用户时不可跳过（要定设置项）
     return {"sequence": seq, "merged": merged, "optional": optional}
 

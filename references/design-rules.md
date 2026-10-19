@@ -32,7 +32,19 @@
 4. 所有动效提供 `prefers-reduced-motion` 降级；页面不可见或窗口失焦时降低帧率或暂停。
 
 ### 0.11 目录结构与 git 管理
-所有文件都在项目下的 `.taste-design/`（可用环境变量 `TASTE_DESIGN_DIR` 改名），按 git 处理方式分四个区。`gate.py init` 会生成 `.taste-design/.gitignore`、`README.md`，LFS 策略时还有 `.gitattributes`。
+单期项目的所有文件都在项目下的 `.taste-design/`（可用环境变量 `TASTE_DESIGN_DIR` 改名），按 git 处理方式分四个区。`gate.py init` 会生成 `.taste-design/.gitignore`、`README.md`，LFS 策略时还有 `.gitattributes`。
+
+多期项目使用 `.taste-design/project.json` 登记期，每期各自拥有完整的四区，跨期稳定内容单独放 `shared/`。每期的 `.gitignore` / `.gitattributes` 由该期的 `gate.py --phase ID media ...` 生成；不要用某一期的策略覆盖其他期。
+
+```text
+.taste-design/
+  project.json
+  phases/P1/{record,work,media,cache}/...
+  phases/P2/{record,work,media,cache}/...
+  shared/{brand.md,design-system/}
+```
+
+`shared/` 不是第五个阶段区，也不是历史归档：只放跨期仍有效、已由用户确认的品牌与设计系统。P2 的页面范围、答案、验收与当前工作必须留在 `phases/P2/`。
 
 ```
 .taste-design/
@@ -56,6 +68,7 @@
 
 **放文件的规则**
 - 决策过程文字、结论 → `record/`；设计稿（HTML、CSS、JSON、Markdown）→ `work/`；图片、视频、截图 → `media/`；用完即弃的东西 → `cache/`。
+- 多期项目下的上述四个区均指 `phases/<当前 ID>/`；跨期稳定基线才写 `shared/`，且必须有来源。不要把某一期的 `record/` 或 `work/` 直接搬到共享层。
 - 不要在 `.taste-design/` 根下另建目录；hook 会拦截。
 - 不要把截图、样例图写进 `record/` 或 `work/`（work 里的页面通过相对路径 `../../media/...` 引用素材）。
 - 成品代码不放在这里，写到项目源码里（见第 9 节）。
@@ -71,6 +84,8 @@
 **决策记录随仓库同步**：每次作答都会更新 `record/decisions/<ID>/answer.json`、`record/decisions.md` 和 `record/summary/`。建议每过一个闸门提交一次（例如 `git add .taste-design && git commit -m "design: 通过闸门 N"`），这样设计决策和代码改动在同一条历史里，评审时能看到"为什么这样做"。智能体只在用户要求时提交。
 
 **旧项目迁移**：项目里有旧版 `design/`（含 `state.json`）时运行 `gate.py migrate`（先用 `--dry-run` 看计划）。它会把文件分到四个区、改写 question.json 和 work/ 页面里的素材路径、把旧 `dist/DESIGN.md`、`dist/HANDOFF.md` 搬到 `work/handoff/`、生成全部摘要卡；项目自己的 `design/` 中与本 skill 无关的文件不会动。
+
+旧单期 `.taste-design/` 不会自动转换为多期。需要转换时先保留原目录作为单期项目，明确每一期对应的阶段、范围和已验收内容，再由用户决定是否复制或另建；脚本不会猜哪份历史属于 P1、P2。
 
 ### 0.12 设置项与主题一致性
 用户难以在几个布局或样式之间取舍时，可以把它们做成最终产品里的设置项，但有代价：每多一个取值，就多一套要设计、维护、测试的界面；大多数用户从不改设置，**默认值仍然必须是选定的最佳方案**。
