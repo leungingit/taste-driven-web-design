@@ -1,0 +1,26 @@
+{
+  "id": "D03-demo-direction",
+  "stage": 3,
+  "type": "single",
+  "role": "direction",
+  "title": "拾页的首页，你更想沿哪个方向继续？",
+  "context": "演示项目：同一个阅读产品，比较三种视觉与布局方向。先放大查看样张，再选择并留下想保留或调整的细节。",
+  "sample_kind": "code-native",
+  "options": [
+    {
+      "id": "A", "label": "安静的日常", "intensity": "克制",
+      "desc": "柔和绿调、留白与熟悉的双栏结构，让阅读成为日常。",
+      "media": [{"type": "html", "src": "@/work/demo/directions.html#A", "origin": "rendered", "viewport": 1200, "viewport_height": 800}]
+    },
+    {
+      "id": "B", "label": "编辑部来信", "intensity": "中等",
+      "desc": "重排为刊物式分栏，以大标题、期号和专题封面组织内容。",
+      "media": [{"type": "html", "src": "@/work/demo/directions.html#B", "origin": "rendered", "viewport": 1200, "viewport_height": 800}]
+    },
+    {
+      "id": "C", "label": "好奇心入口", "intensity": "大胆",
+      "desc": "用侧向阅读线索与探索入口重组首屏，鲜明色块强化表达。",
+      "media": [{"type": "html", "src": "@/work/demo/directions.html#C", "origin": "rendered", "viewport": 1200, "viewport_height": 800}]
+    }
+  ]
+}

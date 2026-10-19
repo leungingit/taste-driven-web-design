@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="500" viewBox="0 0 1400 500" role="img" aria-labelledby="title desc">
+<title id="title">From an idea to a design you can review.</title>
+<desc id="desc">You bring the intent and judgment. The agent turns decisions into design. Align intent → Compare samples → Build and refine → Approve &amp; roll out → Deliver &amp; resume</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0 0 L6 3 L0 6" fill="none" stroke="#a7ac9d" stroke-width="1.5"/></marker></defs>
+<rect width="1400" height="500" rx="24" fill="#182d25"/>
+<g font-family="-apple-system, BlinkMacSystemFont, PingFang SC, Microsoft YaHei, sans-serif">
+<text x="44" y="52" fill="#d9b97d" font-size="15" letter-spacing="2">TASTE-DRIVEN WEB DESIGN / WORKFLOW</text>
+<text x="44" y="108" fill="#f3f1e8" font-size="38" font-weight="650">From an idea to a design you can review.</text>
+<text x="44" y="146" fill="#bcc9bc" font-size="20">You bring the intent and judgment. The agent turns decisions into design.</text>
+<rect x="44" y="183" width="244" height="175" rx="14" fill="#f3f1e8"/>
+<text x="64" y="220" fill="#927040" font-size="17">01</text>
+<text x="64" y="257" fill="#243b30" font-size="22" font-weight="650">Align intent</text>
+<text x="64" y="294" fill="#485a4f" font-size="15">Goals, scope, references</text>
+<text x="64" y="321" fill="#485a4f" font-size="15">Invite images for text briefs.</text>
+<path d="M293 270 H305" stroke="#a7ac9d" stroke-width="1.5" marker-end="url(#arrow)"/>
+<rect x="312" y="183" width="244" height="175" rx="14" fill="#f3f1e8"/>
+<text x="332" y="220" fill="#927040" font-size="17">02</text>
+<text x="332" y="257" fill="#243b30" font-size="22" font-weight="650">Compare samples</text>
+<text x="332" y="294" fill="#485a4f" font-size="15">Directions, type, color</text>
+<text x="332" y="321" fill="#485a4f" font-size="15">Zoom in, then choose.</text>
+<path d="M561 270 H573" stroke="#a7ac9d" stroke-width="1.5" marker-end="url(#arrow)"/>
+<rect x="580" y="183" width="244" height="175" rx="14" fill="#f3f1e8"/>
+<text x="600" y="220" fill="#927040" font-size="17">03</text>
+<text x="600" y="257" fill="#243b30" font-size="22" font-weight="650">Build and refine</text>
+<text x="600" y="294" fill="#485a4f" font-size="15">Prototypes, tokens, pages</text>
+<text x="600" y="321" fill="#485a4f" font-size="15">Apply feedback to artifacts.</text>
+<path d="M829 270 H841" stroke="#a7ac9d" stroke-width="1.5" marker-end="url(#arrow)"/>
+<rect x="848" y="183" width="244" height="175" rx="14" fill="#f3f1e8"/>
+<text x="868" y="220" fill="#927040" font-size="17">04</text>
+<text x="868" y="257" fill="#243b30" font-size="22" font-weight="650">Approve &amp; roll out</text>
+<text x="868" y="294" fill="#485a4f" font-size="15">Review, then extend</text>
+<text x="868" y="321" fill="#485a4f" font-size="15">Check consistency.</text>
+<path d="M1097 270 H1109" stroke="#a7ac9d" stroke-width="1.5" marker-end="url(#arrow)"/>
+<rect x="1116" y="183" width="244" height="175" rx="14" fill="#f3f1e8"/>
+<text x="1136" y="220" fill="#927040" font-size="17">05</text>
+<text x="1136" y="257" fill="#243b30" font-size="22" font-weight="650">Deliver &amp; resume</text>
+<text x="1136" y="294" fill="#485a4f" font-size="15">Source, handoff, records</text>
+<text x="1136" y="321" fill="#485a4f" font-size="15">Resume from saved evidence.</text>
+<path d="M56 400 H1340" stroke="#ffffff25"/>
+<text x="44" y="435" fill="#e5dcc5" font-size="20">Choices, notes, artifacts, and checks stay with the project for the next round.</text>
+<text x="44" y="471" fill="#a7b9aa" font-size="15">Workflow overview · Full workflow has stages 0–9; the track adapts to the approved scope.</text>
+</g></svg>
