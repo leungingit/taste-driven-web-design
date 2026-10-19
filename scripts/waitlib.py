@@ -144,6 +144,37 @@ def view(root):
     return Store(root, 99).view(include_flow=False)
 
 
+def decision_notice(root, snapshot):
+    """生成等待前应转达给用户的入口和当前可作答项，不将排队项冒充已开放。"""
+    st = load_json(os.path.join(root, P.STATE), {}) or {}
+    channel = st.get("channel", "web")
+    info = load_json(_p(root, ".server.json"), {}) or {}
+    limit = info.get("max_open", 3) if channel == "web" else 3
+    items = [{"id": q["id"], "title": q.get("title", q["id"])} for q in snapshot["open"][:limit]]
+    url, path = None, None
+    lines = [f"当前阶段：{snapshot['stage']} · {snapshot['stage_name']}"]
+    if channel == "web":
+        if info.get("port"):
+            host = info.get("host", "127.0.0.1")
+            host = "localhost" if host in ("127.0.0.1", "0.0.0.0") else host
+            url = f"http://{host}:{info['port']}/"
+            lines.append(f"请打开决策页：[打开决策页]({url})")
+        else:
+            lines.append("尚未取得决策页地址：先启动 decide_server.py serve 并确认服务可用，再将实际地址告知用户；不要直接等待。")
+    elif channel == "static":
+        path = os.path.join(root, P.EXPORT, "index.html")
+        lines.append(f"请打开已导出的决策页：[{os.path.basename(path)}]({path})；创建或变更决策后须重新 export。")
+    else:
+        lines.append("请查看对话中展示的决策样张；智能体须先展示样张，再等待你的答复。")
+    lines.append("本轮待决定：")
+    lines.extend(f"- {q['id']}：{q['title']}" for q in items)
+    if channel == "web":
+        lines.append("请在页面中逐项选择并提交，需要调整可填写备注；提交后我会读取答案并继续。若服务位于 SSH 远程机器，需先配置端口转发。")
+    else:
+        lines.append("请按决策 ID 回复选择和备注；静态页面可复制回复文本发回当前对话。")
+    return {"channel": channel, "url": url, "path": path, "items": items, "text": "\n".join(lines)}
+
+
 def summary(root, answers):
     """新答案 + 当前局面 + 下一步提示。"""
     from gate import workflow_next

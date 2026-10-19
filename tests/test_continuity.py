@@ -3,6 +3,7 @@ import contextlib
 import itertools
 import json
 import os
+import select
 from pathlib import Path
 import subprocess
 import sys
@@ -87,11 +88,12 @@ class ContinuityTests(unittest.TestCase):
             self.write("work/handoff/HANDOFF.md", "# 交付\n验证：打开首页检查结果。\n")
 
     @contextlib.contextmanager
-    def server(self):
-        store = decide_server.Store(str(self.root), 99)
+    def server(self, max_open=99):
+        store = decide_server.Store(str(self.root), max_open)
         srv = ThreadingHTTPServer(("127.0.0.1", 0), decide_server.make_handler(store))
         thread = threading.Thread(target=srv.serve_forever, daemon=True)
-        self.write(f"{P.RUNTIME}/.server.json", {"port": srv.server_port, "pid": os.getpid()})
+        self.write(f"{P.RUNTIME}/.server.json", {"port": srv.server_port, "host": "127.0.0.1",
+                                                    "max_open": max_open, "pid": os.getpid()})
         thread.start()
         try:
             yield f"http://127.0.0.1:{srv.server_port}"
@@ -143,6 +145,57 @@ class ContinuityTests(unittest.TestCase):
         refused = self.cli("decide_server.py", "ack", "验收", "--ts", payload["unacked"][0]["ts"], ok=False)
         self.assertNotEqual(refused.returncode, 0)
         self.assertFalse((self.root / P.RUNTIME / ".agent-acked.json").exists())
+
+    def test_waiting_notice_contains_actual_url_and_only_visible_decisions(self):
+        """使用服务实际端口和开放上限，不能把排队或其他阶段的题目当成当前待答项。"""
+        for did, stage in (("D01-方向", 2), ("D02-配色", 2), ("D03-依赖", 2), ("D04-未来", 4)):
+            q = self.question(did, stage)
+            q["title"] = f"请确认{did}的样张"
+            if did == "D03-依赖":
+                q["depends_on"] = ["D02-配色"]
+            self.write(f"{P.DECISIONS}/{did}/question.json", q)
+        with self.server(max_open=1) as base:
+            flow = json.loads(self.cli("gate.py", "next", "--json").stdout)
+            notice = flow["decision_notice"]
+            self.assertEqual(notice["url"], base.replace("127.0.0.1", "localhost") + "/")
+            self.assertEqual(notice["items"], [{"id": "D01-方向", "title": "请确认D01-方向的样张"}])
+            self.assertIn(notice["url"], notice["text"])
+            self.assertIn("提交", notice["text"])
+            self.assertIn("用户可见的对话消息", flow["next"])
+            self.assertNotIn("D02-配色", notice["text"])
+            self.assertNotIn("D03-依赖", notice["text"])
+            self.assertNotIn("D04-未来", notice["text"])
+            self.answer("D01-方向")
+            delivered = json.loads(self.cli("gate.py", "next", "--json").stdout)
+            self.cli("decide_server.py", "ack", "D01-方向", "--ts", delivered["new"][0]["ts"])
+            updated = json.loads(self.cli("gate.py", "next", "--json").stdout)
+            self.assertEqual(updated["decision_notice"]["items"][0]["id"], "D02-配色")
+
+    def test_waiting_without_server_address_does_not_invent_default_url(self):
+        """还没取得服务地址时要求先启动确认，不把默认端口冒充可用页面。"""
+        self.question()
+        flow = json.loads(self.cli("gate.py", "next", "--json").stdout)
+        self.assertIsNone(flow["decision_notice"]["url"])
+        self.assertIn("不要直接等待", flow["decision_notice"]["text"])
+        self.assertNotIn("8765", flow["decision_notice"]["text"])
+
+    def test_serve_announces_and_records_actual_assigned_port(self):
+        """服务使用系统分配端口时，启动提示与记录必须指向真实可访问的页面。"""
+        process = subprocess.Popen([sys.executable, str(SCRIPTS / "decide_server.py"), "--root", str(self.root),
+                                    "--max-open", "1", "serve", "--port", "0"],
+                                   cwd=self.project, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            self.assertTrue(select.select([process.stdout], [], [], 5)[0], "服务未及时输出启动提示")
+            line = process.stdout.readline()
+            info = waitlib.load_json(str(self.root / P.RUNTIME / ".server.json"))
+            self.assertGreater(info["port"], 0)
+            self.assertEqual(info["max_open"], 1)
+            self.assertIn(f"http://localhost:{info['port']}/", line)
+            with urllib.request.urlopen(f"http://127.0.0.1:{info['port']}/api/ping", timeout=3) as response:
+                self.assertEqual(response.status, 200)
+        finally:
+            process.terminate()
+            process.communicate(timeout=3)
 
     def test_context_locates_missing_records_and_merged_stage_without_history_text(self):
         """缺失记录可定位，合并阶段可恢复，历史通过索引按需回查。"""
@@ -234,6 +287,13 @@ class ContinuityTests(unittest.TestCase):
                                         "wait", "--chunk", "10", "--idle", "0"],
                                        cwd=self.project, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             try:
+                self.assertTrue(select.select([process.stdout], [], [], 5)[0], "wait 阻塞前没有刷新提示")
+                notice_line = process.stdout.readline()
+                self.assertTrue(notice_line.startswith("NOTICE "), notice_line)
+                notice = json.loads(notice_line[7:])
+                self.assertEqual(notice["url"], base.replace("127.0.0.1", "localhost") + "/")
+                self.assertEqual(notice["items"], [{"id": "验收", "title": "请验收当前阶段"}])
+                self.assertIsNone(process.poll(), "提示应在等待结束前输出")
                 deadline = time.monotonic() + 5
                 while True:
                     heartbeat = waitlib.load_json(str(marker), {}) or {}

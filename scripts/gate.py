@@ -383,7 +383,8 @@ def workflow_next(root, snapshot=None):
     if v["open"]:
         if st["mode"] == "unattended" and cur not in (0, 1):
             return result("working", "decide", "按无人值守协议落实当前决策、登记答案并确认，再查询 next。")
-        return result("waiting", "wait", "等待当前决策；web 通道运行分段 wait，inline/static 展示决策并等待真实用户答复。")
+        out["decision_notice"] = waitlib.decision_notice(root, v)
+        return result("waiting", "wait", "先在用户可见的对话消息中输出 decision_notice.text，确认实际入口可用并展示当前待决定项，再开始等待；工具日志不等于已通知用户。\n" + out["decision_notice"]["text"])
     return result("working", "work", "继续当前阶段工作，修复无效或依赖未满足的决策；需要用户拍板时创建决策。还差：" + "；".join(out["blockers"][:6]))
 
 

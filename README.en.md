@@ -55,7 +55,7 @@ Preserve the existing business logic. Aim for a warm editorial feel.
 Confirm scope and references with me first, and show samples for major aesthetic choices.
 ```
 
-The agent initializes the project records, creates decisions, and follows the workflow. The default channel is a local decision webpage. When a local server is unavailable, the protocol selects an inline or static channel according to the host's capabilities. You answer decisions and approve results; you do not need to send a separate “continue” message after each stage.
+The agent initializes the project records, creates decisions, and follows the workflow. The default channel is a local decision webpage. Before waiting on each new batch, the agent must send a chat message with the actual page address, the decisions awaiting your input, and submission instructions. When a local server is unavailable, the protocol selects an inline or static channel according to the host's capabilities. You answer decisions and approve results; you do not need to send a separate “continue” message after each stage.
 
 ## Project records and recovery
 

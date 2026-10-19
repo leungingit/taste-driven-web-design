@@ -773,9 +773,10 @@ def cmd_serve(a):
     srv = ThreadingHTTPServer((a.host, a.port), make_handler(store))
     os.makedirs(os.path.join(store.root, P.RUNTIME), exist_ok=True)
     with open(P.runtime(store.root, ".server.json"), "w") as f:
-        json.dump({"port": a.port, "pid": os.getpid()}, f)
-    print(f"[decide] 决策页面：http://{'localhost' if a.host in ('127.0.0.1','0.0.0.0') else a.host}:{a.port}/")
-    print("[decide] 若通过 SSH 连到这台机器，在本地终端运行：ssh -L %d:localhost:%d <主机>，再在本地浏览器打开上面的地址" % (a.port, a.port))
+        json.dump({"port": srv.server_port, "host": a.host, "max_open": a.max_open, "pid": os.getpid()}, f)
+    print(f"[decide] 决策页面：http://{'localhost' if a.host in ('127.0.0.1','0.0.0.0') else a.host}:{srv.server_port}/")
+    print("[decide] 若通过 SSH 连到这台机器，在本地终端运行：ssh -L %d:localhost:%d <主机>，再在本地浏览器打开上面的地址" % (srv.server_port, srv.server_port))
+    print("[decide] 创建决策后读取 gate.py next --json 的 decision_notice，在用户可见的对话里发送地址、待决定项和提交方式，然后再 wait；本日志不能替代对话通知。")
     sys.stdout.flush()
     try:
         srv.serve_forever()
@@ -786,6 +787,10 @@ def cmd_serve(a):
 def cmd_wait(a):
     """单段等待返回后接续同一流程；不因超时或空闲要求人工继续。"""
     root = os.path.abspath(a.root)
+    from gate import workflow_next
+    flow = workflow_next(root)
+    if flow.get("decision_notice"):
+        print("NOTICE " + json.dumps(flow["decision_notice"], ensure_ascii=False), flush=True)
     status, payload = waitlib.wait(root, a.chunk, a.idle, who="cli")
     if status == "answered":
         print(f"[decide] 用户提交了 {len(payload['new'])} 个答案：")
