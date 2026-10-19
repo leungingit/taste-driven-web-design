@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>资产对照 · 基准 vs 衍生</title>
+<!--
+  使用说明（智能体）：复制为 .taste-design/work/qa/asset-compare.html，只修改下面的数据。
+  每类资产一组：左侧是用户选定的基准资产，右侧是全部衍生资产，按同一尺寸显示。
+  criteria 抄自 assets/spec.md 的「细节密度下限」；每个衍生资产逐条给出 pass/fail。
+  有任何 fail 的资产不能交付——先修好再更新这一页。
+  图片路径相对本文件：基准与衍生资产图在 ../../media/assets/{benchmark,derived}/；项目里的真实资源用相对项目根的路径，如 ../../../public/covers/c01.png。
+-->
+<script id="data" type="application/json">
+{
+  "groups": [
+    {"type": "示例资产类型",
+     "benchmark": {"name": "基准：示例", "src": "../../media/assets/benchmark/example.png"},
+     "criteria": ["结构分件", "关节/连接件", "紧固件", "线宽层级（至少 3 级）", "辅助线/标注"],
+     "items": [
+       {"name": "衍生 01", "src": "../../media/assets/derived/example-01.png", "checks": ["pass", "pass", "fail", "pass", "fail"], "note": ""}
+     ]}
+  ]
+}
+</script>
+<style>
+:root{--bg:#f4f1ec;--card:#fffdf9;--ink:#1d1b18;--mute:#6d675e;--line:#ddd6ca;--bad:#b42318;--ok:#2f6f3e;--acc:#c2410c}
+@media (prefers-color-scheme:dark){:root{--bg:#161513;--card:#1f1e1b;--ink:#eee8de;--mute:#a1998c;--line:#35322d;--bad:#ff8a80;--ok:#7cc48c;--acc:#fb8a4a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,"PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif}
+header{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}
+header b{font-size:16px}.mute{color:var(--mute)}.bad{color:var(--bad)}.ok{color:var(--ok)}
+main{padding:16px;max-width:1400px;margin:0 auto;display:grid;gap:22px}
+.grp{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+.grid{display:grid;grid-template-columns:minmax(220px,1fr) 3fr;gap:14px;align-items:start}
+.bench{position:sticky;top:10px;border:2px solid var(--acc);border-radius:10px;padding:8px}
+.items{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+.it{border:1px solid var(--line);border-radius:10px;padding:8px}.it.fail{border-color:var(--bad);box-shadow:0 0 0 2px color-mix(in srgb,var(--bad) 25%,transparent)}
+img{width:100%;aspect-ratio:16/10;object-fit:contain;background:#fff;border-radius:6px;display:block}
+ul{margin:6px 0 0;padding-left:18px;font-size:12px}
+@media (max-width:760px){.grid{grid-template-columns:1fr}.bench{position:static}}
+</style>
+</head>
+<body>
+<header><b>资产对照</b><span id="sum" class="mute"></span></header>
+<main id="m"></main>
+<script>
+const D=JSON.parse(document.getElementById("data").textContent);
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+let total=0,fails=0;
+document.getElementById("m").innerHTML=D.groups.map(g=>{
+  const items=g.items.map(it=>{total++;const f=(it.checks||[]).includes("fail")||(it.checks||[]).length<g.criteria.length;if(f)fails++;
+    return `<div class="it ${f?"fail":""}"><img loading="lazy" src="${esc(it.src)}" alt="${esc(it.name)}"><b>${esc(it.name)}</b> <span class="${f?"bad":"ok"}">${f?"不达标":"达标"}</span>
+      <ul>${g.criteria.map((c,i)=>`<li class="${(it.checks||[])[i]==="pass"?"ok":"bad"}">${esc(c)}：${(it.checks||[])[i]==="pass"?"✓":"✗"}</li>`).join("")}</ul>${it.note?`<div class="mute">${esc(it.note)}</div>`:""}</div>`}).join("");
+  return `<section class="grp"><h2 style="margin:0 0 10px;font-size:17px">${esc(g.type)}</h2><div class="grid">
+    <div class="bench"><img src="${esc(g.benchmark.src)}" alt="${esc(g.benchmark.name)}"><b>${esc(g.benchmark.name)}</b><ul>${g.criteria.map(c=>`<li>${esc(c)}</li>`).join("")}</ul></div>
+    <div class="items">${items}</div></div></section>`}).join("");
+document.getElementById("sum").innerHTML=fails?`<span class="bad">${fails} / ${total} 个衍生资产不达标，不能交付</span>`:`<span class="ok">全部 ${total} 个衍生资产达标</span>`;
+</script>
+</body>
+</html>

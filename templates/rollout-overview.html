@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>全站铺开 · 对照表</title>
+<!--
+  使用说明（智能体）：复制为 .taste-design/work/rollout/overview.html，只修改下面 PAGES 数据。
+  图片路径相对本文件：基线截图在 ../../media/baseline/，改造后截图放 .taste-design/media/shots/rollout/（写作 ../../media/shots/rollout/xxx.png）。
+  status: todo | doing | done（与 rollout/pages.json 保持一致）
+-->
+<script id="data" type="application/json">
+{
+  "title": "全站铺开对照表",
+  "pages": [
+    {"name": "示例页面", "status": "todo", "components": ["页头", "表格"],
+     "before": "../../media/baseline/example.png",
+     "after_desktop": "../../media/shots/rollout/example-1440.png",
+     "after_mobile": "../../media/shots/rollout/example-375.png",
+     "note": ""}
+  ]
+}
+</script>
+<style>
+:root{--bg:#f4f1ec;--card:#fffdf9;--ink:#1d1b18;--mute:#6d675e;--line:#ddd6ca;--acc:#c2410c;--ok:#2f6f3e}
+@media (prefers-color-scheme:dark){:root{--bg:#161513;--card:#1f1e1b;--ink:#eee8de;--mute:#a1998c;--line:#35322d;--acc:#fb8a4a;--ok:#7cc48c}}
+*{box-sizing:border-box}[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,"PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif}
+header{position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--line);padding:10px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;z-index:2}
+header b{font-size:16px}.mute{color:var(--mute)}
+.bar{height:6px;flex:1 1 200px;background:var(--line);border-radius:9px;overflow:hidden}.bar i{display:block;height:100%;background:var(--ok)}
+main{padding:16px;display:grid;gap:16px;max-width:1400px;margin:0 auto}
+.row{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
+.head{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:8px}
+.st{font-size:12px;border-radius:99px;padding:1px 9px;border:1px solid var(--line)}.st.done{color:var(--ok);border-color:var(--ok)}.st.doing{color:var(--acc);border-color:var(--acc)}
+.cols{display:grid;grid-template-columns:2fr 2fr 1fr;gap:10px}
+figure{margin:0}figcaption{font-size:12px;color:var(--mute);margin-bottom:4px}
+img{width:100%;display:block;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:zoom-in}
+.miss{aspect-ratio:16/10;border:1px dashed var(--line);border-radius:8px;display:grid;place-items:center;color:var(--mute);font-size:12px}
+@media (max-width:760px){.cols{grid-template-columns:1fr}}
+#lb{position:fixed;inset:0;background:#000d;display:none;place-items:center;z-index:9;cursor:zoom-out}#lb img{max-width:95vw;max-height:94vh;width:auto}
+</style>
+</head>
+<body>
+<header><b id="t"></b><span class="mute" id="n"></span><div class="bar"><i id="p"></i></div></header>
+<main id="m"></main>
+<div id="lb"><img alt=""></div>
+<script>
+const D=JSON.parse(document.getElementById("data").textContent);
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fig=(cap,src)=>`<figure><figcaption>${cap}</figcaption>${src?`<img loading="lazy" src="${esc(src)}" alt="${esc(cap)}">`:`<div class="miss">尚无截图</div>`}</figure>`;
+const done=D.pages.filter(p=>p.status==="done").length;
+document.getElementById("t").textContent=D.title;
+document.getElementById("n").textContent=`${done} / ${D.pages.length} 页完成`;
+document.getElementById("p").style.width=(D.pages.length?done/D.pages.length*100:0)+"%";
+const ST={todo:"未开始",doing:"进行中",done:"完成"};
+document.getElementById("m").innerHTML=D.pages.map(p=>`<section class="row">
+  <div class="head"><b>${esc(p.name)}</b><span class="st ${esc(p.status)}">${ST[p.status]||esc(p.status)}</span>
+  <span class="mute">${(p.components||[]).map(esc).join(" · ")}</span><span class="mute">${esc(p.note)}</span></div>
+  <div class="cols">${fig("改造前",p.before)}${fig("改造后 · 桌面",p.after_desktop)}${fig("改造后 · 手机",p.after_mobile)}</div></section>`).join("");
+document.addEventListener("click",e=>{const lb=document.getElementById("lb");
+  if(e.target.matches("main img")){lb.querySelector("img").src=e.target.src;lb.style.display="grid"}else if(e.target.closest("#lb"))lb.style.display="none"});
+</script>
+</body>
+</html>

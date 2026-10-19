@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>视觉发散 · 方案总览</title>
+<!--
+  使用说明（智能体）：
+  1. 把本文件复制为 .taste-design/work/variants/variants.html。所有方案都写在这一个文件里，不要拆分。
+  2. 每个方案是一个 <template id="V{n}">，属性：
+       data-label      方案名
+       data-intensity  主题力度：克制 / 中等 / 大胆（决定所在行）
+       data-layout     版式家族：如 大字主导 / 插画主导 / 网格拼贴（决定所在列）
+       data-traits     引用的特征编号，如 T01,T03
+       data-note       一句话设计思路；刻意放弃的特征也写在这里
+       data-round      第几轮（可选）。重新发散时在本文件里追加新方案（新编号），旧方案保留
+       data-skeleton   一句话布局骨架（必填），如「左侧导航｜首屏｜两列卡片｜横幅」
+       data-break      大胆方案必填：颠覆了什么（导航范式 / 阅读顺序 / 页面隐喻 / 交互方式 / 信息组织）
+       data-role="reference"  参照布局（改版放现状，新建放灰模），只用于力度检查和对比
+     三档力度首先差在布局：克制保持布局只换样式；中等调整布局；大胆颠覆布局。写完运行 variants_check.py 检查。
+     template 里写该方案完整的 <style> 和页面结构（以及可选的 <script>），就像写一个独立页面的 <body>。
+     每个方案在独立 iframe 中渲染，样式和脚本互不影响，媒体查询按预览宽度生效。
+  3. 所有方案共用的字体等资源：在本 <head> 中写成带 data-shared 属性的 <link>，会被注入每个方案。
+  4. 图片：本文件在 .taste-design/work/variants/，素材写成 ../../media/inbox/brand/logo.png 这样的相对路径，或内联 data URI。
+  5. 预览地址：
+       variants.html             矩阵总览
+       variants.html#V3          单个方案（可切换 375 / 768 / 1440 宽度）
+       variants.html#embed=V3    只渲染 V3 本身（决策页 iframe 用）
+-->
+<link data-shared rel="preconnect" href="https://fonts.googleapis.com">
+
+<style>
+:root{--bg:#f4f1ec;--card:#fffdf9;--ink:#1d1b18;--mute:#6d675e;--line:#ddd6ca;--acc:#c2410c}
+@media (prefers-color-scheme:dark){:root{--bg:#161513;--card:#1f1e1b;--ink:#eee8de;--mute:#a1998c;--line:#35322d;--acc:#fb8a4a}}
+*{box-sizing:border-box}[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,"PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif}
+.bar{position:sticky;top:0;z-index:5;display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 16px;background:var(--bg);border-bottom:1px solid var(--line)}
+.bar b{font-size:16px;margin-right:6px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{font:inherit;border:0;background:transparent;color:var(--ink);padding:5px 12px;cursor:pointer}
+.seg button[aria-pressed=true]{background:var(--ink);color:var(--bg)}
+.sp{flex:1}.mute{color:var(--mute)}
+.matrix{padding:16px;display:grid;gap:14px}
+.mrow{display:grid;grid-template-columns:72px repeat(var(--cols),minmax(0,400px));gap:14px;align-items:start}
+.mhead{font-weight:600;color:var(--mute);padding-top:4px}
+.colhead{font-size:12px;color:var(--mute);text-align:center}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;cursor:pointer;transition:transform .12s,border-color .12s}
+.card:hover{border-color:var(--acc);transform:translateY(-2px)}
+.card:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+.thumb{position:relative;width:100%;aspect-ratio:1440/900;overflow:hidden;background:#fff}
+.thumb iframe{position:absolute;left:0;top:0;width:1440px;height:900px;border:0;transform-origin:0 0;pointer-events:none}
+.cap{padding:8px 10px}.cap b{color:var(--acc);margin-right:6px}
+.cap .note{font-size:12px;color:var(--mute);margin-top:2px}
+.cell{display:grid;gap:14px;min-width:0}
+.single{padding:16px;display:flex;flex-direction:column;align-items:center;gap:10px}
+.stage{position:relative;overflow:hidden;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 30px #0002}
+.stage iframe{position:absolute;left:0;top:0;border:0;transform-origin:0 0}
+.meta{max-width:980px;text-align:center}
+@media (max-width:760px){.mrow{grid-template-columns:1fr}.mhead{padding:8px 0 0}.colhead{display:none}}
+</style>
+</head>
+<body>
+
+<!-- ===================== 方案区：每个方案一个 template ===================== -->
+
+<template id="V1" data-label="示例方案" data-intensity="克制" data-layout="大字主导" data-traits="T01" data-note="这是占位示例，复制后删除">
+  <style>
+    body{margin:0;font-family:Georgia,serif;background:#f7f2e8;color:#222}
+    .hero{min-height:100vh;display:grid;place-items:center;padding:6vw}
+    h1{font-size:clamp(40px,8vw,120px);margin:0;line-height:.95}
+  </style>
+  <section class="hero"><h1>把这里换成真实方案</h1></section>
+</template>
+
+<!-- ===================== 以下为总览外壳，不需要修改 ===================== -->
+
+<div class="bar">
+  <b>视觉发散</b><span class="mute" id="count"></span>
+  <div class="seg" id="viewSeg"><button data-view="matrix">矩阵总览</button><button data-view="single">单个方案</button></div>
+  <span class="sp"></span>
+  <div class="seg" id="pickSeg" hidden></div>
+  <div class="seg" id="widthSeg" hidden><button data-w="375">375</button><button data-w="768">768</button><button data-w="1440">1440</button></div>
+</div>
+<main id="out"></main>
+
+<script>
+(function(){
+  const T=[...document.querySelectorAll("template[id]")];
+  const shared=[...document.head.querySelectorAll("[data-shared]")].map(e=>e.outerHTML).join("");
+  const docOf=t=>`<!doctype html><html${t.dataset.lang?` lang="${t.dataset.lang}"`:""}><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${shared}</head><body>${t.innerHTML}</body></html>`;
+  const byId=id=>T.find(t=>t.id===id);
+  const params=()=>new URLSearchParams(location.hash.slice(1).includes("=")?location.hash.slice(1):"");
+
+  // 嵌入模式：只输出一个方案本身
+  const p=params();
+  if(p.get("embed")){const t=byId(p.get("embed")); if(t){
+    document.body.replaceChildren(); document.body.style.margin="0"; document.body.style.overflow="hidden";
+    const f=document.createElement("iframe"); f.srcdoc=docOf(t); f.title=t.id;
+    f.style.cssText="position:fixed;inset:0;width:100vw;height:100vh;border:0;background:#fff";
+    document.body.append(f);} return;}
+
+  const out=document.getElementById("out");
+  document.getElementById("count").textContent=`${T.length} 个方案`;
+  let width=1440;
+
+  function frame(t,w,h){const f=document.createElement("iframe");f.title=t.id;f.loading="lazy";f.srcdoc=docOf(t);f.style.width=w+"px";f.style.height=h+"px";return f;}
+
+  function matrix(){
+    const rows=[...new Set(T.map(t=>t.dataset.intensity||"—"))];
+    const cols=[...new Set(T.map(t=>t.dataset.layout||"—"))];
+    const wrap=document.createElement("div");wrap.className="matrix";wrap.style.setProperty("--cols",cols.length);
+    const head=document.createElement("div");head.className="mrow";head.innerHTML="<div></div>"+cols.map(c=>`<div class="colhead">${c}</div>`).join("");wrap.append(head);
+    for(const r of rows){
+      const row=document.createElement("div");row.className="mrow";row.innerHTML=`<div class="mhead">${r}</div>`;
+      for(const c of cols){
+        const ts=T.filter(x=>(x.dataset.intensity||"—")===r&&(x.dataset.layout||"—")===c);
+        const cell=document.createElement("div");cell.className="cell";
+        for(const t of ts){
+          const card=document.createElement("div");card.className="card";card.tabIndex=0;
+          const th=document.createElement("div");th.className="thumb";th.append(frame(t,1440,900));
+          card.append(th);
+          const rnd=t.dataset.round?` <span class="mute">第${t.dataset.round}轮</span>`:"";
+          card.insertAdjacentHTML("beforeend",`<div class="cap"><b>${t.id}</b>${t.dataset.label||""}${rnd}<div class="note">${t.dataset.note||""}${t.dataset.traits?" · "+t.dataset.traits:""}</div></div>`);
+          card.onclick=()=>{location.hash=t.id};card.onkeydown=e=>{if(e.key==="Enter")location.hash=t.id};
+          cell.append(card);
+        }
+        row.append(cell);
+      }
+      wrap.append(row);
+    }
+    out.replaceChildren(wrap);
+    const fit=()=>wrap.querySelectorAll(".thumb").forEach(th=>{const f=th.firstChild;f.style.transform=`scale(${th.clientWidth/1440})`});
+    fit();new ResizeObserver(fit).observe(wrap);
+  }
+
+  function single(id){
+    const t=byId(id)||T[0];
+    const box=document.createElement("div");box.className="single";
+    box.innerHTML=`<div class="meta"><b style="color:var(--acc)">${t.id}</b> ${t.dataset.label||""} · ${t.dataset.intensity||""} · ${t.dataset.layout||""}<div class="mute">${t.dataset.note||""}${t.dataset.traits?" · 特征 "+t.dataset.traits:""}</div></div>`;
+    const stage=document.createElement("div");stage.className="stage";
+    const h=Math.max(600,innerHeight-150), f=frame(t,width,0);
+    stage.append(f);box.append(stage);out.replaceChildren(box);
+    const fit=()=>{const avail=Math.min(out.clientWidth-32,width);const s=avail/width;
+      stage.style.width=avail+"px";stage.style.height=h+"px";f.style.height=(h/s)+"px";f.style.transform=`scale(${s})`;};
+    fit();addEventListener("resize",fit,{once:true});
+    const pick=document.getElementById("pickSeg");
+    pick.innerHTML=T.map(x=>`<button data-id="${x.id}" aria-pressed="${x.id===t.id}">${x.id}</button>`).join("");
+  }
+
+  function route(){
+    const id=location.hash.slice(1);
+    const isSingle=!!byId(id);
+    document.querySelectorAll("#viewSeg button").forEach(b=>b.setAttribute("aria-pressed",String((b.dataset.view==="single")===isSingle)));
+    document.querySelectorAll("#widthSeg button").forEach(b=>b.setAttribute("aria-pressed",String(+b.dataset.w===width)));
+    document.getElementById("widthSeg").hidden=!isSingle;document.getElementById("pickSeg").hidden=!isSingle;
+    isSingle?single(id):matrix();
+  }
+  document.getElementById("viewSeg").onclick=e=>{const v=e.target.dataset.view;if(!v)return;location.hash=v==="single"?(byId(location.hash.slice(1))||T[0]).id:"";};
+  document.getElementById("widthSeg").onclick=e=>{const w=+e.target.dataset.w;if(!w)return;width=w;route();};
+  document.getElementById("pickSeg").onclick=e=>{const id=e.target.dataset.id;if(id)location.hash=id;};
+  addEventListener("keydown",e=>{const i=T.findIndex(t=>t.id===location.hash.slice(1));if(i<0)return;
+    if(e.key==="ArrowRight")location.hash=T[(i+1)%T.length].id;if(e.key==="ArrowLeft")location.hash=T[(i-1+T.length)%T.length].id;if(e.key==="Escape")location.hash="";});
+  addEventListener("hashchange",route);route();
+})();
+</script>
+</body>
+</html>
