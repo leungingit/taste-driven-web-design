@@ -329,7 +329,7 @@ def blockers(root, st, n):
                 continue
             m = SYNC_RE.findall(txt)
             if not m or max(int(x) for x in m) < n:
-                probs.append(f"{f} 还没同步到闸门 {n}：核对结论并局部更新「同步至闸门：{n}」；实质内容变化才升版本号")
+                probs.append(f"{f} 还没同步到闸门 {n}：更新内容（删掉已被推翻的结论）后写一行「同步至闸门：{n}」并升版本号")
 
     # 有人值守：本阶段代定的事项必须写进本阶段的验收决策，让用户随验收一起确认
     if st.get("mode") != "unattended":
@@ -423,7 +423,7 @@ def workflow_next(root, snapshot=None):
         if st["mode"] == "unattended" and cur not in (0, 1):
             return result("working", "decide", "按无人值守协议落实当前决策、登记答案并确认，再查询 next。")
         out["decision_notice"] = waitlib.decision_notice(root, v)
-        return result("waiting", "wait", "先在用户可见的对话消息中输出 decision_notice.text，确认实际入口可用并展示当前待决定项，再按已验证的宿主能力选择持续或短段等待；工具日志不等于已通知用户。")
+        return result("waiting", "wait", "先在用户可见的对话消息中输出 decision_notice.text，确认实际入口可用并展示当前待决定项，再开始等待；工具日志不等于已通知用户。\n" + out["decision_notice"]["text"])
     return result("working", "work", "继续当前阶段工作，修复无效或依赖未满足的决策；需要用户拍板时创建决策。还差：" + "；".join(out["blockers"][:6]))
 
 
@@ -441,8 +441,6 @@ def cmd_next(a):
         print(f"设计期：{phase or '单期'}｜流程状态：{flow['status']}｜当前阶段：{flow['stage']}")
         if flow.get("new_text"):
             print(flow["new_text"])
-        if flow.get("decision_notice"):
-            print(flow["decision_notice"]["text"])
         print(flow["next"])
 
 

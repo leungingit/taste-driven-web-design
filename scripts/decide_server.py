@@ -4,7 +4,6 @@
 用法（在项目根目录执行）：
   decide_server.py [--phase P1] serve [--root design] [--port 8765] [--host 127.0.0.1] [--max-open 3]
   decide_server.py wait [--chunk 45] [--idle 0]       # 分段等待；到时续接，不结束设计流程
-  decide_server.py wait --follow --json               # 宿主可续接进程时，持续等待真实事件
   decide_server.py ack ID --ts 原版本时间戳           # 落实答案后精确确认
   decide_server.py resume                             # 用户回来后解除「我先离开」
   decide_server.py export                              # 生成静态决策页 .taste-design/cache/export/index.html（无后端）
@@ -790,19 +789,18 @@ def cmd_serve(a):
 
 
 def cmd_wait(a):
-    """持续模式不将空等交还模型；短段模式保持兼容。"""
+    """单段等待返回后接续同一流程；不因超时或空闲要求人工继续。"""
     root = os.path.abspath(a.root)
     from gate import workflow_next
     flow = workflow_next(root)
     if flow.get("decision_notice"):
         print("NOTICE " + json.dumps(flow["decision_notice"], ensure_ascii=False), flush=True)
-    status, payload = waitlib.wait(root, None if a.follow else a.chunk, a.idle, who="cli")
-    if status == "answered" and not a.json:
+    status, payload = waitlib.wait(root, a.chunk, a.idle, who="cli")
+    if status == "answered":
         print(f"[decide] 用户提交了 {len(payload['new'])} 个答案：")
         print(payload["new_text"])
         print(f"[decide] 仍待作答：{payload['open'] or '无'}；排队：{payload['queued'] or '无'}")
-    if not a.json:
-        print(f"[decide] 下一步：{payload['next']}")
+    print(f"[decide] 下一步：{payload['next']}")
     print("RESULT " + json.dumps({**{k: v for k, v in payload.items() if k != "new_text"},
                                  "flow_status": payload.get("status"), "status": status}, ensure_ascii=False))
     sys.exit(waitlib.STATUS[status])
@@ -845,10 +843,7 @@ def main():
     sp = ap.add_subparsers(dest="cmd", required=True)
     p = sp.add_parser("serve"); p.add_argument("--port", type=int, default=8765); p.add_argument("--host", default="127.0.0.1"); p.set_defaults(f=cmd_serve)
     p = sp.add_parser("wait"); p.add_argument("--chunk", type=float, default=45, help="单次最长等待秒数；到时续接等待，须小于工具时限")
-    p.add_argument("--idle", type=float, default=0, help="空闲提示间隔（分钟）；提示后续接等待，0 为不提示")
-    p.add_argument("--follow", action="store_true", help="同一进程持续等待真实事件，忽略 chunk/idle；须先验证宿主可保留并续接进程")
-    p.add_argument("--json", action="store_true", help="仅输出一次 NOTICE 和最终 RESULT；完整答案只在 new 中交付")
-    p.set_defaults(f=cmd_wait)
+    p.add_argument("--idle", type=float, default=0, help="空闲提示间隔（分钟）；提示后续接等待，0 为不提示"); p.set_defaults(f=cmd_wait)
     p = sp.add_parser("ack"); p.add_argument("id"); p.add_argument("--ts", required=True); p.set_defaults(f=cmd_ack)
     sp.add_parser("resume").set_defaults(f=cmd_resume)
     sp.add_parser("pause").set_defaults(f=cmd_pause)
