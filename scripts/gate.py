@@ -34,6 +34,7 @@ from stages import STAGES, ALL, load_scope, validate_scope, validate_phase_scope
 import paths as P  # noqa: E402
 import summary as SUM  # noqa: E402
 import theme as TH  # noqa: E402
+import delivery as DL  # noqa: E402
 
 SYNC_RE = re.compile(r"同步至闸门\s*[:：]\s*(\d+)")
 
@@ -101,6 +102,8 @@ def pending_topics(root, stages):
 
 def snapshot(root, n):
     sc = load_scope(root) or {}
+    if sc.get("delivery_mode") == "design-only":
+        return []
     container = os.path.dirname(os.path.dirname(root)) if P.phase_info(root) else root
     base = os.path.dirname(container)
     dst = os.path.join(root, P.SNAPSHOTS, f"gate-{n}")
@@ -172,6 +175,7 @@ def blockers(root, st, n):
     probs = []
     covered = stages_of(st, n)
     sc = load_scope(root)
+    probs += DL.check(root, st, sc, decisions(root))
 
     # 产物
     for s in covered:
@@ -265,7 +269,15 @@ def blockers(root, st, n):
                 probs.append(f"work/rollout/pages.json 缺少这些页面：{miss}")
             undone = [p.get("name") for p in pages if isinstance(p, dict) and p.get("status") != "done"]
             if undone:
-                probs.append(f"这些页面还没改造完成（status 不是 done）：{undone}")
+                probs.append(f"这些页面还没完成本期交付（status 不是 done）：{undone}")
+            if sc.get("delivery_mode") == "design-only":
+                for p in pages:
+                    if not isinstance(p, dict):
+                        continue
+                    proto = p.get("prototype", "")
+                    full = os.path.realpath(os.path.join(root, proto))
+                    if not proto.startswith("work/") or not full.startswith(os.path.realpath(os.path.join(root, "work")) + os.sep) or not os.path.isfile(full):
+                        probs.append(f"仅设计模式的页面「{p.get('name')}」需要 prototype 指向 work/ 内实际存在的工作原型")
         except Exception as e:
             probs.append(f"work/rollout/pages.json 无法解析：{e}")
     if n == 8 and sc and sc.get("asset_types"):
@@ -317,7 +329,7 @@ def blockers(root, st, n):
                 continue
             m = SYNC_RE.findall(txt)
             if not m or max(int(x) for x in m) < n:
-                probs.append(f"{f} 还没同步到闸门 {n}：更新内容（删掉已被推翻的结论）后写一行「同步至闸门：{n}」并升版本号")
+                probs.append(f"{f} 还没同步到闸门 {n}：核对结论并局部更新「同步至闸门：{n}」；实质内容变化才升版本号")
 
     # 有人值守：本阶段代定的事项必须写进本阶段的验收决策，让用户随验收一起确认
     if st.get("mode") != "unattended":
@@ -366,7 +378,9 @@ def workflow_next(root, snapshot=None):
     meta = P.phase_info(root) or {}
     out = {"phase": st.get("phase") or meta.get("id"), "phase_name": meta.get("name") or "",
            "stage": cur, "stage_name": STAGES[cur]["name"], "new": [], "open": [],
-           "queued": [], "blockers": [], "gate_ready": False, "completed": False}
+           "queued": [], "blockers": [], "gate_ready": False, "completed": False,
+           "delivery_mode": (load_scope(root) or {}).get("delivery_mode"),
+           "delivery_boundary": st.get("delivery_boundary")}
 
     def result(status, action, hint):
         return {**out, "status": status, "action": action, "next": hint}
@@ -381,6 +395,10 @@ def workflow_next(root, snapshot=None):
     out["new"] = waitlib.new_answers(root)
     out["completed"] = bool(st["sequence"]) and set(st["sequence"]).issubset(st["passed"]) and not out["new"]
     if out["completed"]:
+        boundary = DL.check(root, st, load_scope(root), decisions(root))
+        if boundary:
+            out.update(completed=False, blockers=boundary)
+            return result("working", "repair", "交付边界检查未通过：" + "；".join(boundary))
         return result("completed", "handoff", "整个设计流程已完成。输出最终交付与验证结果，不再 pass 或等待。")
     v = snapshot if snapshot is not None else waitlib.view(root)
     out.update(open=[q["id"] for q in v["open"]], queued=[q["id"] for q in v["queued"]])
@@ -405,7 +423,7 @@ def workflow_next(root, snapshot=None):
         if st["mode"] == "unattended" and cur not in (0, 1):
             return result("working", "decide", "按无人值守协议落实当前决策、登记答案并确认，再查询 next。")
         out["decision_notice"] = waitlib.decision_notice(root, v)
-        return result("waiting", "wait", "先在用户可见的对话消息中输出 decision_notice.text，确认实际入口可用并展示当前待决定项，再开始等待；工具日志不等于已通知用户。\n" + out["decision_notice"]["text"])
+        return result("waiting", "wait", "先在用户可见的对话消息中输出 decision_notice.text，确认实际入口可用并展示当前待决定项，再按已验证的宿主能力选择持续或短段等待；工具日志不等于已通知用户。")
     return result("working", "work", "继续当前阶段工作，修复无效或依赖未满足的决策；需要用户拍板时创建决策。还差：" + "；".join(out["blockers"][:6]))
 
 
@@ -423,6 +441,8 @@ def cmd_next(a):
         print(f"设计期：{phase or '单期'}｜流程状态：{flow['status']}｜当前阶段：{flow['stage']}")
         if flow.get("new_text"):
             print(flow["new_text"])
+        if flow.get("decision_notice"):
+            print(flow["decision_notice"]["text"])
         print(flow["next"])
 
 
@@ -496,6 +516,7 @@ def cmd_context(a):
     out = {
         "phase": st.get("phase"), "phase_name": (P.phase_info(root) or {}).get("name"),
         "root": root,
+        "delivery_mode": flow["delivery_mode"], "delivery_boundary": flow["delivery_boundary"],
         "flow": {**{k: flow[k] for k in ("status", "action", "stage", "stage_name")},
                  "next": hints[flow["status"]],
                  "blockers": [preview(x, 180) for x in flow["blockers"][:a.limit]],
@@ -583,6 +604,7 @@ def cmd_init(a):
     if meta:
         st["phase"] = meta["id"]
     save_state(root, st)
+    DL.capture(root)
     progress = os.path.join(root, P.PROGRESS)
     if not os.path.exists(progress):
         shutil.copyfile(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -614,6 +636,7 @@ def cmd_phase(a):
               "sequence": list(ALL), "merged": {}, "optional": [],
               "history": [{"ts": now(), "event": "init"}]}
         save_state(phase_root, st)
+        DL.capture(phase_root)
         progress = os.path.join(phase_root, P.PROGRESS)
         if not os.path.exists(progress):
             shutil.copyfile(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -680,6 +703,7 @@ def cmd_status(a):
     phase = f"设计期：{meta.get('id')} {meta.get('name') or ''}".strip() + "   " if meta else ""
     print(f"{phase}当前阶段：{name(n)}   模式：{st['mode']}   通道：{st['channel']}   轨道：{(sc or {}).get('track', '未定')}")
     print(f"阶段序列：{describe_plan(st)}")
+    print(f"交付边界：{(sc or {}).get('delivery_mode', '旧版未记录 / 待用户确认')}")
     print(f"已通过：{st['passed'] or '无'}   待复核事项：{pending_count(root)}")
     flow = workflow_next(root)
     print(f"流程状态：{flow['status']}｜下一步：{flow['next']}")
@@ -701,6 +725,11 @@ def cmd_check(a):
     root = os.path.abspath(a.root)
     st = load_state(root)
     n, cur = a.stage, st["stage"]
+    sc = load_scope(root)
+    if cur != 0 or (sc or {}).get("delivery_mode") or st.get("delivery_boundary"):
+        probs = DL.check(root, st, sc, decisions(root))
+        if probs:
+            sys.exit("[gate] 交付边界检查未通过：" + "；".join(probs))
     if n == cur or st["merged"].get(n) == cur:
         print(f"[gate] 允许：阶段 {name(n)}" + (f"（并入闸门 {cur}）" if n != cur else ""))
         return
@@ -719,6 +748,9 @@ def cmd_pass(a):
     st = load_state(root)
     n = a.stage
     if set(st["sequence"]).issubset(st["passed"]):
+        probs = DL.check(root, st, load_scope(root), decisions(root))
+        if probs:
+            sys.exit("[gate] 交付边界检查未通过：" + "；".join(probs))
         print("[gate] 全部阶段已完成，无需重复 pass。")
         return
     if n != st["stage"]:
@@ -733,6 +765,7 @@ def cmd_pass(a):
             print("  - " + p)
         sys.exit(1)
     if n == 0:
+        st["delivery_boundary"] = DL.decision(decisions(root))
         st.update(plan(load_scope(root)))
         print(f"[gate] 本项目的阶段序列：{describe_plan(st)}")
         start = (load_scope(root) or {}).get("start_stage")
@@ -757,6 +790,9 @@ def cmd_skip(a):
     root = os.path.abspath(a.root)
     st = load_state(root)
     n = a.stage
+    probs = DL.check(root, st, load_scope(root), decisions(root))
+    if probs:
+        sys.exit("[gate] 交付边界检查未通过：" + "；".join(probs))
     if n == 5 and (load_scope(root) or {}).get("user_customizable"):
         sys.exit("[gate] 拒绝：外观开放给最终用户时不能跳过阶段 5，设置项的维度、预设和令牌要在这里定稿")
     if n != st["stage"] or n not in st["optional"]:
@@ -851,7 +887,7 @@ def cmd_rollback(a):
     st["passed"] = [p for p in st["passed"] if p not in later]
     stamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
     for d in decisions(root):
-        if d.get("type") == "gate" and d.get("stage") in later and d["_answer"]:
+        if (d.get("type") == "gate" or (n == 0 and d.get("role") == "delivery-boundary")) and d.get("stage") in later and d["_answer"]:
             os.rename(os.path.join(d["_dir"], "answer.json"), os.path.join(d["_dir"], f"answer.superseded-{stamp}.json"))
     if n == 0:
         st.update({"sequence": list(ALL), "merged": {}, "optional": []})
@@ -874,18 +910,26 @@ def cmd_channel(a):
 def cmd_record(a):
     root = os.path.abspath(a.root)
     st = load_state(root)
-    if st["channel"] == "web" and a.via == "chat":
-        sys.exit("[gate] 拒绝：当前通道是 web，决策必须在网页上作答。若网页确实无法打开，先运行 gate.py channel inline|static --reason 原因 并告诉用户。")
     d = P.decision_dir(root, a.id)
     if not os.path.exists(os.path.join(d, "question.json")):
         sys.exit(f"[gate] 找不到决策 {a.id}")
     if os.path.exists(os.path.join(d, "answer.json")):
         sys.exit(f"[gate] {a.id} 已作答")
+    with open(os.path.join(d, "question.json"), encoding="utf-8") as f:
+        qj = json.load(f)
+    post_delivery_docs = (qj.get("role") == "documentation-sync" and st["stage"] == 9
+                          and set(st["sequence"]).issubset(st["passed"]) and a.by == "user" and a.quote)
+    if st["channel"] == "web" and a.via == "chat" and not post_delivery_docs:
+        sys.exit("[gate] 拒绝：当前通道是 web，决策必须在网页上作答。若网页确实无法打开，先运行 gate.py channel inline|static --reason 原因 并告诉用户。")
+    if qj.get("role") in ("delivery-boundary", "documentation-sync") and a.by != "user":
+        sys.exit("[gate] 交付边界和文档同步必须由用户确认，不能由智能体代答")
     if a.by == "user" and a.via == "chat" and not a.quote:
         sys.exit("[gate] 对话作答必须用 --quote 记录用户原话")
     if a.by == "agent" and st["mode"] != "unattended":
         sys.exit("[gate] 有人值守模式下智能体不得代答决策；次要事项请用 gate.py assume")
     choice = [c.strip() for c in a.choice.split(",") if c.strip()]
+    if qj.get("role") in ("delivery-boundary", "documentation-sync") and (len(choice) != 1 or choice[0] not in {o["id"] for o in qj.get("options") or []}):
+        sys.exit("[gate] 请明确选择一个交付边界或文档同步选项")
     setting = None
     if a.setting:
         with open(os.path.join(d, "question.json"), encoding="utf-8") as f:

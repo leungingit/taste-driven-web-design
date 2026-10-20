@@ -17,6 +17,7 @@ import json, os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from stages import STAGES, ALL, owner_of, host_of  # noqa: E402
 import paths as P  # noqa: E402
+import delivery as DL  # noqa: E402
 
 
 def find_design_root(path):
@@ -39,7 +40,36 @@ def main():
         sys.exit(0)
     root = find_design_root(path)
     if not root:
+        try:
+            root = P.find_root_phase(ev.get("cwd") or os.getcwd()) or P.find_root_phase(os.path.dirname(os.path.abspath(path)))
+            if not root:
+                sys.exit(0)
+            from stages import load_scope
+            from gate import decisions, load_state
+            sc = load_scope(root) or {}
+            st = load_state(root)
+            sealed = st.get("delivery_boundary") or {}
+            mode = sc.get("delivery_mode")
+            if mode or sealed or st["stage"] == 0:
+                selected = DL.decision(decisions(root))
+                if not selected or selected["mode"] != mode or (0 in st.get("passed", []) and sealed != selected):
+                    block("交付边界未确认或被改写；先完成阶段 0 的用户选择，变更需 rollback 0。")
+                if mode == "design-only":
+                    project = DL.project_root(root)
+                    rel = os.path.relpath(os.path.abspath(path), project).replace(os.sep, "/")
+                    shared = os.path.join(P.find_container(root) or root, P.SHARED)
+                    shared_rel = os.path.relpath(os.path.abspath(path), shared)
+                    in_shared = not shared_rel.startswith("..") and os.path.realpath(path) == os.path.join(os.path.realpath(shared), shared_rel)
+                    if not DL.allowed_document(project, rel, DL.documents_approved(decisions(root))) and not in_shared:
+                        block("用户选择了仅设计：只能写设计产物；AGENTS.md、docs/design-system.md 的关联说明需另行获得用户文档同步确认，不得修改工程实现。")
+                elif 0 not in st.get("passed", []):
+                    block("先通过闸门 0 确认交付边界，再修改工程实现。")
+        except (ValueError, OSError, TypeError, KeyError) as e:
+            block(f"无法核实交付边界：{e}")
         sys.exit(0)
+    rel = os.path.relpath(os.path.abspath(path), root)
+    if os.path.realpath(path) != os.path.join(os.path.realpath(root), rel):
+        block("设计产物路径经过符号链接，无法保证写入仍在设计目录内。")
     rel = os.path.relpath(os.path.abspath(path), root).replace(os.sep, "/")
     if rel.startswith(".."):
         sys.exit(0)
@@ -51,8 +81,8 @@ def main():
 
     if rel.startswith(P.DECISIONS + "/") and "/answer" in rel and rel.endswith(".json"):
         block("answer.json 只能由用户在决策网页上提交（或经 gate.py record 登记对话中的原话）。不要自己写答案。")
-    if rel == P.STATE or rel.startswith(P.RUNTIME + "/"):
-        block("state.json 和 cache/runtime/ 只能由脚本修改。")
+    if rel in (P.STATE, DL.BASELINE) or rel.startswith(P.RUNTIME + "/"):
+        block("state.json、工程指纹基线和 cache/runtime/ 只能由脚本修改。")
     if rel in (".gitignore", ".gitattributes", P.CONFIG):
         block("git 相关文件由 gate.py 管理：改素材策略请运行 gate.py media ignore|lfs|commit。")
     if rel.startswith(P.SUMMARY + "/"):

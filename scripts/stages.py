@@ -33,6 +33,7 @@ SCOPE_ENUMS = {
     "scope": {"single", "sample-then-rollout", "all-pages"},
     "layout_freedom": {"keep", "rearrange", "restructure"},
     "track": {"full", "fast"},
+    "delivery_mode": {"design-only", "design-and-implement"},
 }
 
 

@@ -222,7 +222,8 @@ class ContinuityTests(unittest.TestCase):
         scope = {"mode": "redesign", "product_type": "site", "scope": "sample-then-rollout",
                  "layout_freedom": "rearrange", "track": "fast", "user_customizable": False,
                  "phase_relation": "extend", "inherit_mode": "none", "inherits": [], "start_stage": 3,
-                 "pages": ["首页"], "asset_types": [], "references": [], "source_dirs": []}
+                 "pages": ["首页"], "asset_types": [], "references": [], "source_dirs": [],
+                 "delivery_mode": "design-and-implement"}
         self.write(P.SCOPE, scope)
         baseline = self.root / P.BASELINE / "首页.png"
         baseline.parent.mkdir(parents=True, exist_ok=True)
@@ -230,9 +231,15 @@ class ContinuityTests(unittest.TestCase):
         for rel in (f"{P.BRIEF}/brief.md", f"{P.BRIEF}/traits.md"):
             self.write(rel, "版本：1\n同步至闸门：0\n")
         self.question("范围确认", stage=0, answered=True, role="scope")
+        self.write(f"{P.DECISIONS}/交付边界/question.json", {
+            "id": "交付边界", "stage": 0, "type": "single", "role": "delivery-boundary", "visual": False,
+            "title": "交付边界", "options": [{"id": "design-only", "label": "仅设计"},
+                                             {"id": "design-and-implement", "label": "设计并实施"}]})
+        self.answer("交付边界", choice="design-and-implement")
         answers = waitlib.new_answers(str(self.root))
         waitlib.deliver(str(self.root), answers)
-        waitlib.ack_answer(str(self.root), "范围确认", answers[0]["ts"])
+        for answer in answers:
+            waitlib.ack_answer(str(self.root), answer["id"], answer["ts"])
         st = gate.load_state(str(self.root))
         st.update({"sequence": [0, 3, 4, 5, 6, 7, 8, 9], "merged": {}, "optional": [5]})
         gate.save_state(str(self.root), st)

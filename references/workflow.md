@@ -24,20 +24,20 @@ python3 "$SKILL/scripts/gate.py" --phase P2 context --json --compact
 ### 0.3 阶段与闸门
 | # | 阶段 | 必需产物（gate.py 检查） | 特别检查 |
 |---|---|---|---|
-| 0 | 启动与范围 | record/scope.json；改版项目还要 media/baseline/ 每页一张现状截图 | role=scope 决策已答；pages 列全所有可导航页面与分页（本期不做的标出并写原因）；外观是否开放给最终用户已定 |
+| 0 | 启动与范围 | record/scope.json；改版项目还要 media/baseline/ 每页一张现状截图 | role=scope 已答；role=delivery-boundary 用户选择与 delivery_mode 一致；pages 列全；外观是否开放已定 |
 | 1 | 创意简报 | record/brief/ 下的 brief.md、traits.md、content.yaml、constraints.yaml | scope.references 里每个参考都有一个 role=reference-breakdown 决策 |
 | 2 | 信息架构（灰模） | work/wireframe/*.html | — |
 | 3 | 视觉发散 | work/variants/variants.html（只能有这一个页面） | 至少一个"大胆"档方案；role=direction 决策已答 |
 | 4 | 原型与资产规范 | work/proto/v*.html、work/assets/spec.md | spec 覆盖每类资产；基准已选；应用类有状态表且原型可切换状态；带质感/动效时 traits 有图层表 |
 | 5 | 设计令牌定稿 | work/playgrounds/*.html、work/tokens.css；有设置项时 work/theme/axes.json、gallery.html | 设置项规格通过校验（0.12）、每套预设已验收、每个「做成设置项」的答案都已归类 |
 | 6 | 区块打磨 | work/proto/v*.html | — |
-| 7 | 全站铺开 | work/rollout/pages.json、work/rollout/overview.html | scope.pages 每页都在清单里且 status=done |
+| 7 | 全站铺开 | work/rollout/pages.json、work/rollout/overview.html | scope.pages 每页都在清单里且 status=done；仅设计时每页 prototype 指向实际工作原型 |
 | 8 | 质量检查 | work/qa/report.md、work/qa/manual-checks.md；有资产类型时还要 work/qa/asset-compare.html；有设置项时 work/qa/theme-matrix.json | 所有衍生资产逐条达标；所有设置组合对比度达标且有截图 |
-| 9 | 交付 | work/handoff/DESIGN.md、work/handoff/HANDOFF.md | HANDOFF 写明验证方法；有待复核事项时 role=pending-review 决策已答 |
+| 9 | 交付 | work/handoff/DESIGN.md、work/handoff/HANDOFF.md | HANDOFF 写明边界与验证；待复核事项已答；仅设计在交付最后建议是否同步项目文档，不以同步作为完成条件 |
 
 每个闸门还都要求：本阶段决策全部作答、有一个被用户 approve 的 `type: gate` 验收决策、所有决策通过校验、brief.md 和 traits.md 已同步到本闸门（见 0.6）、本阶段智能体代定的事项已逐条写进验收决策（见 0.8.1）。
 
-闸门通过时，gate.py 会把 scope.json 里 `source_dirs` 列出的源码目录（生成脚本、组件源码等）快照到 `cache/snapshots/gate-N/`（本地备份，不提交），保证每个版本都能从源码重建。
+设计并实施时，闸门通过会把 scope.json 里 `source_dirs` 列出的源码目录快照到 `cache/snapshots/gate-N/`（本地备份，不提交）。仅设计不复制工程源码；初始化时记录的工程指纹用于检查实现未变，规则见 [阶段 0](stage-0.md)。两种模式均保存真实用户选择，`next/context` 输出当前边界及已确认的决策版本。
 
 多期项目额外检查：闸门 0 会核对 `phase.json.inherits` 的路径实际存在；继承不改变本期 `scope.pages`、页面范围和验收条件。没有 `phase.json` 的单期项目不做这项检查。
 
@@ -72,6 +72,7 @@ python3 "$SKILL/scripts/gate.py" --phase P2 context --json --compact
 | 增删区块、调整优先级 | 阶段 2（被省略时回到阶段 0 改布局自由度） |
 | 颜色/字体/质感 | 阶段 5（被跳过时用 assume 记录新值） |
 | 新增或删除设置项、预设、维度取值 | 阶段 5；更新 axes.json、令牌和画廊，重跑主题矩阵 |
+| 改变交付边界（仅设计 / 设计并实施） | 阶段 0；原交付边界答案归档，用户重新选择后再验收，不能只改 delivery_mode 或重置工程指纹 |
 | 动效行为（哪层动、怎么动、周期） | 阶段 5；先按 0.10.2 更新动效规格并让用户确认 |
 | 图层质感划分（如卡片改透明） | 阶段 5，并同步 traits 的图层表 |
 | 单个区块细节 | 阶段 6 |

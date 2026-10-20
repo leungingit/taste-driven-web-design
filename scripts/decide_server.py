@@ -4,6 +4,7 @@
 用法（在项目根目录执行）：
   decide_server.py [--phase P1] serve [--root design] [--port 8765] [--host 127.0.0.1] [--max-open 3]
   decide_server.py wait [--chunk 45] [--idle 0]       # 分段等待；到时续接，不结束设计流程
+  decide_server.py wait --follow --json               # 宿主可续接进程时，持续等待真实事件
   decide_server.py ack ID --ts 原版本时间戳           # 落实答案后精确确认
   decide_server.py resume                             # 用户回来后解除「我先离开」
   decide_server.py export                              # 生成静态决策页 .taste-design/cache/export/index.html（无后端）
@@ -203,6 +204,8 @@ class Store:
         other = (body.get("other") or "").strip()
         note = (body.get("note") or "").strip()
         value = body.get("value")
+        if q.get("role") in ("delivery-boundary", "documentation-sync") and (len(choice) != 1 or other):
+            return 400, "请明确选择一个选项；补充要求请写在备注中"
         if t in ("single", "scale", "gate"):
             if len(choice) != 1 and not (other and q.get("allow_other", True) and t != "gate"):
                 return 400, "需要选择 1 项"
@@ -397,7 +400,7 @@ function decHTML(q){
     const hasMedia=(q.media&&q.media.length)||(q.options||[]).some(o=>o.media&&o.media.length);
     body = (hasMedia?`<div class="howto">点图片或 ⤢ 全屏查看细节（可缩放、并排对比）；点卡片下方文字选择。</div>`:"") + (q.media?mediaHTML(q.media,q.id,null):"") + `<div class="opts${q.type==="scale"?" scale":""}">${(q.options||[]).map(o=>optHTML(q,o)).join("")}</div>`;
   }
-  const other = (q.type!=="gate"&&q.type!=="tune"&&q.allow_other!==false) ?
+  const other = (q.type!=="gate"&&q.type!=="tune"&&q.role!=="delivery-boundary"&&q.role!=="documentation-sync"&&q.allow_other!==false) ?
     `<div class="col"><input type="text" data-other="${esc(q.id)}" placeholder="都不对？写下你想要的，或把参考图放进 .taste-design/media/inbox/images/ 后写文件名"></div>`:"";
   const setrow = q.allow_setting ? (DATA.customizable
     ? `<div class="setrow" data-setrow="${esc(q.id)}"><label><input type="checkbox" data-setmode="${esc(q.id)}"> 都要，做成设置项</label>
@@ -787,18 +790,19 @@ def cmd_serve(a):
 
 
 def cmd_wait(a):
-    """单段等待返回后接续同一流程；不因超时或空闲要求人工继续。"""
+    """持续模式不将空等交还模型；短段模式保持兼容。"""
     root = os.path.abspath(a.root)
     from gate import workflow_next
     flow = workflow_next(root)
     if flow.get("decision_notice"):
         print("NOTICE " + json.dumps(flow["decision_notice"], ensure_ascii=False), flush=True)
-    status, payload = waitlib.wait(root, a.chunk, a.idle, who="cli")
-    if status == "answered":
+    status, payload = waitlib.wait(root, None if a.follow else a.chunk, a.idle, who="cli")
+    if status == "answered" and not a.json:
         print(f"[decide] 用户提交了 {len(payload['new'])} 个答案：")
         print(payload["new_text"])
         print(f"[decide] 仍待作答：{payload['open'] or '无'}；排队：{payload['queued'] or '无'}")
-    print(f"[decide] 下一步：{payload['next']}")
+    if not a.json:
+        print(f"[decide] 下一步：{payload['next']}")
     print("RESULT " + json.dumps({**{k: v for k, v in payload.items() if k != "new_text"},
                                  "flow_status": payload.get("status"), "status": status}, ensure_ascii=False))
     sys.exit(waitlib.STATUS[status])
@@ -841,7 +845,10 @@ def main():
     sp = ap.add_subparsers(dest="cmd", required=True)
     p = sp.add_parser("serve"); p.add_argument("--port", type=int, default=8765); p.add_argument("--host", default="127.0.0.1"); p.set_defaults(f=cmd_serve)
     p = sp.add_parser("wait"); p.add_argument("--chunk", type=float, default=45, help="单次最长等待秒数；到时续接等待，须小于工具时限")
-    p.add_argument("--idle", type=float, default=0, help="空闲提示间隔（分钟）；提示后续接等待，0 为不提示"); p.set_defaults(f=cmd_wait)
+    p.add_argument("--idle", type=float, default=0, help="空闲提示间隔（分钟）；提示后续接等待，0 为不提示")
+    p.add_argument("--follow", action="store_true", help="同一进程持续等待真实事件，忽略 chunk/idle；须先验证宿主可保留并续接进程")
+    p.add_argument("--json", action="store_true", help="仅输出一次 NOTICE 和最终 RESULT；完整答案只在 new 中交付")
+    p.set_defaults(f=cmd_wait)
     p = sp.add_parser("ack"); p.add_argument("id"); p.add_argument("--ts", required=True); p.set_defaults(f=cmd_ack)
     sp.add_parser("resume").set_defaults(f=cmd_resume)
     sp.add_parser("pause").set_defaults(f=cmd_pause)

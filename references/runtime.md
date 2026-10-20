@@ -124,7 +124,7 @@ python3 $SKILL/scripts/decide_server.py wait --chunk 45 --idle 0
 
 Stop hook 读取同一 next：有未确认答案就重交；有待答决策就短段等待；超时交还智能体续接；无待答决策但仍有工作就阻止提前结束。服务失联不放行，而是要求检查恢复。多次无文件进展只触发诊断，不自动当作完成或用户暂停。无人值守仍遵循其可代答范围；inline/static 的必要用户交互允许结束当前交互回合。
 
-PreToolUse 的 `stage_guard.py` 仍负责拦截越级写入、修改已通过阶段、手写答案/状态、方案拆成多个 HTML 等。它们是流程护栏，不是任意命令执行的安全边界。
+PreToolUse 的 `stage_guard.py` 负责拦截越级写入、修改已通过阶段、手写答案/状态、方案拆成多个 HTML，并按阶段 0 的交付决策拦截仅设计模式下的工程写入。设计产物可以写；`AGENTS.md`、`docs/design-system.md` 的关联说明需另获 `role=documentation-sync` 用户确认。多期项目从工程目录写文件时，必须用 `TASTE_DESIGN_PHASE` 明确本期，不能猜测。Shell 等未经过此 hook 的修改，由 `gate.py check/pass/skip` 的工程指纹检查拒绝放行；指纹仅记录路径、权限与摘要，排除范围见 [阶段 0](stage-0.md)。hook 必须在真实宿主验证已启用；它们是流程护栏，不是任意命令执行的安全边界。
 
 ## 故障、阻塞与恢复
 

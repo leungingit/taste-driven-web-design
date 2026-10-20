@@ -88,8 +88,9 @@ class PhaseRegressionTests(unittest.TestCase):
                 "file_path": str(self.container / rel)}}, ok=False)
             self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
         result = self.cli("stage_guard.py", event={"tool_input": {
-            "file_path": str(self.project / "src/main.py")}})
-        self.assertEqual(result.stdout, "")
+            "file_path": str(self.project / "src/main.py")}}, ok=False)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("交付边界未确认", result.stderr)
 
     def test_wait_hook_outside_design_project_allows_stop(self):
         result = self.cli("wait_hook.py", "--max", "0", event={"cwd": str(self.project)})
@@ -189,7 +190,8 @@ class PhaseRegressionTests(unittest.TestCase):
         scope = {"mode": "new", "product_type": "site", "scope": "single", "layout_freedom": "keep",
                  "track": "fast", "user_customizable": False, "pages": ["首页"], "source_dirs": [],
                  "references": [], "asset_types": [], "phase_relation": "independent",
-                 "inherit_mode": "none", "inherits": [], "start_stage": 3}
+                 "inherit_mode": "none", "inherits": [], "start_stage": 3,
+                 "delivery_mode": "design-and-implement"}
         (root / P.SCOPE).write_text(json.dumps(scope))
         decision = root / P.DECISIONS / "范围"
         decision.mkdir()
@@ -197,8 +199,16 @@ class PhaseRegressionTests(unittest.TestCase):
                                                            "role": "scope", "title": "本期范围", "context": "确认起点"}))
         answer = {"id": "范围", "choice": ["approve"], "answered_by": "user", "via": "web", "ts": "T1"}
         (decision / "answer.json").write_text(json.dumps(answer))
+        boundary = root / P.DECISIONS / "交付边界"
+        boundary.mkdir()
+        (boundary / "question.json").write_text(json.dumps({
+            "id": "交付边界", "stage": 0, "type": "single", "role": "delivery-boundary", "visual": False,
+            "title": "交付边界", "options": [{"id": "design-only", "label": "仅设计"},
+                                             {"id": "design-and-implement", "label": "设计并实施"}]}))
+        (boundary / "answer.json").write_text(json.dumps({**answer, "id": "交付边界", "choice": ["design-and-implement"]}))
         self.cli("gate.py", "next", "--json")
         self.cli("decide_server.py", "ack", "范围", "--ts", "T1")
+        self.cli("decide_server.py", "ack", "交付边界", "--ts", "T1")
         flow = json.loads(self.cli("gate.py", "next", "--json").stdout)
         self.assertEqual(flow["status"], "gate-ready")
         self.assertIn("随后 gate.py check 3", flow["next"])

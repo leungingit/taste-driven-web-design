@@ -15,16 +15,17 @@
 | 纯文字 | — | **禁止用于视觉决策**。三种通道都不可用时停下来，告诉用户缺什么 |
 
 - 自检 1 为"是"时**必须**用 web。
-- 换通道：`gate.py channel inline|static --reason "…"`，并告诉用户原因。web 通道下 `gate.py record` 会拒绝对话作答。
+- 换通道：`gate.py channel inline|static --reason "…"`，并告诉用户原因。web 通道下 `gate.py record` 会拒绝对话作答；唯一例外是全部阶段已经通过后，用户在对话中明确答复可选文档同步建议，可用 `role=documentation-sync`、`--by user --via chat --quote "用户原话"` 登记，无需重复确认或切换通道。
 - **所有通道都先通知再等待**：web 在对话中给实际可点击地址、本轮可作答 ID 与标题、页面提交方式；inline 先展示实际样张、题目和回复格式；static 先重新导出并提供可打开的文件链接、待答项及复制回复方法。详见 runtime.md。服务启动日志或浏览器自动打开不能代替对话消息。
 
 ### 0.8 决策协议
 
 #### 0.8.1 什么走决策页，什么可以代定
-- **主要决策**必须建成决策文件，在决策页作答：方向/方案、主题隐喻、参考拆解、笔触/写实度/插画风格、主色与字体、布局自由度、基准资产、每个阶段的验收。
+- **主要决策**必须建成决策文件，在决策页作答：交付边界、方向/方案、主题隐喻、参考拆解、笔触/写实度/插画风格、主色与字体、布局自由度、基准资产、每个阶段的验收。交付边界和可选文档同步都必须由用户确认，无人值守也不得代答。
 - **次要事项**（例如某个辅助色、旧资源如何归档）可以由智能体按推荐项直接执行，用 `gate.py assume --topic … --choice … --why …` 记录。它们进入 `record/pending-review.md`。
 - **代定不等于跳过确认**：有人值守时，本阶段代定的每一项都必须逐条写进本阶段 gate 决策的 context（或作为 media 展示），让用户随验收一起点头；gate.py 会检查。影响流程结构的事（跳过阶段、省略灰模、沿用现有布局）不能用 assume，必须建决策。交付前再用 `role: "pending-review"` 决策集中复核一次。
 - **对话回复的规则**：每条回复最多一个需要用户回答的问题，并且它应该指向决策页。**不要在回复末尾附带"顺便问一下"的问题**——用户通常只回答主问题，末尾的问题会被遗漏。次要问题要么用 assume 代定，要么建成决策。
+- **仅设计最终交付的例外**：可以在交付说明最后建议用户是否将设计系统约束关联到项目文档；这是已完成交付后的可选后续工作，不需要等待答复或预先建题来阻塞收口。用户明确要求同步时再记录 `role=documentation-sync` 的真实确认，详见阶段 9。
 
 #### 0.8.2 决策文件
 每个决策的题目和答案在 `record/decisions/<ID>/`，样例文件在 `media/samples/<ID>/`。ID 用 `D` + 两位序号 + 短名。`question.json` 由智能体写；`answer.json` **只能**由决策服务或 `gate.py record` 写入，写入时会自动生成摘要卡 `record/summary/<ID>.md`。
@@ -51,7 +52,7 @@
 ```
 字段：
 - `type`：`single` 单选 / `multi` 多选 / `scale` 刻度 / `tune` 拖动调参（需 `playground`）/ `gate` 阶段验收（默认"通过/不通过"，不通过必须写原因）。
-- `role`（可选）：`scope` / `reference-breakdown`（需 `reference`）/ `direction`（每个选项需 `intensity`：克制/中等/大胆，且至少一个"大胆"）/ `asset-benchmark` / `pending-review` / `skip`（需 `skip_stage`）。闸门按角色检查。
+- `role`（可选）：`scope` / `delivery-boundary`（阶段 0，非视觉单选，固定选项 design-only / design-and-implement）/ `documentation-sync`（阶段 9，可选非视觉单选，固定选项 update / defer）/ `reference-breakdown`（需 `reference`）/ `direction`（每个选项需 `intensity`：克制/中等/大胆，且至少一个"大胆"）/ `asset-benchmark` / `pending-review` / `skip`（需 `skip_stage`）。闸门按角色检查。
 - `dimension: "motion"`：动效类决策。每个选项必须有可播放的样例（`video` 或 `html`，按真实速度播放，至少一个完整周期），并有 `motion` 字段写清「什么在动、怎么动、周期多长、什么不动」（见 0.10.2）。
 - `sample_kind`：`artwork`（画面类：插画风格、笔触、写实程度、摄影风格、氛围、主题隐喻、参考拆解）或 `code-native`（配色、字体、版式、图标/SVG、动效、整页方案）。
 - `media[].type`：`image` / `html` / `video` / `link`。`src` 不带前缀时相对 `media/samples/<ID>/`；`@/` 开头相对 `.taste-design/`（如 `@/work/variants/variants.html#embed=V3`、`@/media/baseline/home.png`）；也可以是 http(s)。

@@ -27,7 +27,7 @@ SAMPLE_KINDS = {"artwork", "code-native"}
 #   asset-benchmark     为每类内容资产选定基准资产
 #   pending-review      交付前集中复核智能体代定的事项
 #   skip                有人值守时，跳过可选阶段前让用户点头（需 skip_stage）
-ROLES = {"scope", "reference-breakdown", "direction", "asset-benchmark", "pending-review", "skip"}
+ROLES = {"scope", "delivery-boundary", "documentation-sync", "reference-breakdown", "direction", "asset-benchmark", "pending-review", "skip"}
 
 # dimension=motion 的决策：样例必须可播放（video 或 html），静态图片不能表达运动
 PLAYABLE = {"video", "html"}
@@ -87,6 +87,17 @@ def validate_question(q):
     role = q.get("role")
     if role and role not in ROLES:
         errs.append(f"role 必须是 {sorted(ROLES)}")
+    if role == "delivery-boundary":
+        if q.get("stage") != 0 or t != "single" or visual is not False:
+            errs.append("交付边界必须是阶段 0 的非视觉单选决策（type=single, visual=false）")
+        ids = [o.get("id") for o in q.get("options") or []]
+        if sorted(ids, key=str) != ["design-and-implement", "design-only"]:
+            errs.append("交付边界的两个选项 ID 必须是 design-only / design-and-implement")
+    if role == "documentation-sync":
+        if q.get("stage") != 9 or t != "single" or visual is not False:
+            errs.append("文档同步必须是阶段 9 的非视觉单选决策")
+        if sorted([o.get("id") for o in q.get("options") or []], key=str) != ["defer", "update"]:
+            errs.append("文档同步的两个选项 ID 必须是 update / defer")
     if role == "direction":
         ints = [o.get("intensity") for o in q.get("options") or []]
         if any(i not in INTENSITIES for i in ints):
@@ -109,7 +120,7 @@ def validate_question(q):
     if q.get("allow_setting"):
         if t not in ("single", "scale"):
             errs.append("allow_setting 只能用在 single / scale 决策上")
-        if role in ("scope", "skip", "pending-review", "asset-benchmark", "reference-breakdown"):
+        if role in ("scope", "delivery-boundary", "documentation-sync", "skip", "pending-review", "asset-benchmark", "reference-breakdown"):
             errs.append(f"role={role} 的决策不能做成设置项")
         if not q.get("setting_axis"):
             errs.append("allow_setting 的决策需要 setting_axis：如果做成设置，它属于哪个维度（如 density / mode / accent / preset）")

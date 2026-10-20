@@ -1,6 +1,11 @@
 ## 7. 全站铺开（阶段 7；scope 为 single 时省略）
 
 开始前：`gate.py check 7`。
+
+先读取 `scope.json.delivery_mode`。`design-and-implement` 执行下面的逐页改造；`design-only` 在 `work/` 内抽取原型共享组件、覆盖本期全部页面并截图，不修改工程组件和路由。仅设计时 `pages.json` 的每一页增加 `prototype`，指向实际存在的 `work/` 内原型（相对本期设计目录）；`status=done` 只代表该页设计完成。总览展示原型的桌面/手机效果，并注明尚未实施。门禁会核对原型文件与工程指纹，不能用源码截图代替工作原型。
+
+仅设计的页面记录示例：`{"name":"工作台","route":"/dashboard","components":["页头","空状态"],"order":1,"status":"done","prototype":"work/proto/v003.html"}`。
+
 1. **盘点**：列出全部页面和共享组件，写 `work/rollout/pages.json`：
    ```json
    [{"name": "工作台", "route": "/dashboard", "components": ["页头", "统计卡", "空状态"], "order": 1, "status": "todo"}]
