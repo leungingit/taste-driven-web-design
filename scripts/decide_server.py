@@ -388,19 +388,27 @@ function optHTML(q,o){
     <div><span class="tick" aria-hidden="true"></span>${q.type==="gate"?"":`<span class="oid">${esc(o.id)}</span> `}<span class="olabel">${esc(o.label)}</span>${o.recommended?' <span class="rec">推荐</span>':""}${q.allow_setting?`<button type="button" class="defbtn" data-def="${esc(q.id)}|${esc(o.id)}">设为默认</button>`:""}</div>
     ${o.desc?`<div class="odesc">${esc(o.desc)}</div>`:""}${fit}</div>`;
 }
+function notePlaceholder(q){
+  if(q.type==="gate") return "不通过时必填：要改什么";
+  if(typeof q.note_placeholder==="string" && q.note_placeholder.trim()) return q.note_placeholder.trim();
+  if(q.type==="tune") return "补充说明（可选）：说明当前参数还需怎样调整";
+  const names=(q.options||[]).slice(0,2).map(o=>`「${o.label||o.id}」`).join("、");
+  if(q.visual===false) return `补充说明（可选）：${names?`说明选择${names}的原因或其他要求`:"说明选择原因或其他要求"}`;
+  return `补充说明（可选）：${names?`说明${names}中希望保留或调整的具体部分`:"说明希望保留或调整的具体部分"}`;
+}
 function decHTML(q){
   const typeName={single:"单选",multi:"多选",scale:"刻度（选一档）",tune:"拖动调节",gate:"阶段验收"}[q.type];
   let body="";
   if(q.type==="tune"){
     body=`<div class="tune"><iframe src="${esc(q.playground_url)}"></iframe>
       <div><div class="meta">在左侧调好后，数值会自动出现在这里（也可直接粘贴 CSS 变量）。</div>
-      <textarea rows="16" data-value="${esc(q.id)}" placeholder="--color-bg: …"></textarea></div></div>`;
+      <textarea rows="16" data-value="${esc(q.id)}" placeholder="粘贴当前预览的参数及数值"></textarea></div></div>`;
   } else {
     const hasMedia=(q.media&&q.media.length)||(q.options||[]).some(o=>o.media&&o.media.length);
     body = (hasMedia?`<div class="howto">点图片或 ⤢ 全屏查看细节（可缩放、并排对比）；点卡片下方文字选择。</div>`:"") + (q.media?mediaHTML(q.media,q.id,null):"") + `<div class="opts${q.type==="scale"?" scale":""}">${(q.options||[]).map(o=>optHTML(q,o)).join("")}</div>`;
   }
   const other = (q.type!=="gate"&&q.type!=="tune"&&q.role!=="delivery-boundary"&&q.role!=="documentation-sync"&&q.allow_other!==false) ?
-    `<div class="col"><input type="text" data-other="${esc(q.id)}" placeholder="都不对？写下你想要的，或把参考图放进 .taste-design/media/inbox/images/ 后写文件名"></div>`:"";
+    `<div class="col"><input type="text" data-other="${esc(q.id)}" placeholder="都不合适？说明你的要求，或提供参考素材的位置、链接"></div>`:"";
   const setrow = q.allow_setting ? (DATA.customizable
     ? `<div class="setrow" data-setrow="${esc(q.id)}"><label><input type="checkbox" data-setmode="${esc(q.id)}"> 都要，做成设置项</label>
        <div class="meta">保留 2–4 个选项，最终用户可在「${esc(DATA.customization_page)}」里切换；再点选中卡片上的「设为默认」指定默认值。只适合不同用户会合理地偏好不同选项的情况（如明暗、密度）；如果只是难以取舍，请直接选一个。</div></div>`
@@ -411,7 +419,7 @@ function decHTML(q){
     <div class="meta">${esc(q.id)} · ${typeName}${q.affects?" · 影响："+esc(q.affects):""}</div>
     <h2>${esc(q.title)}</h2>${q.context?`<div class="ctx">${esc(q.context)}</div>`:""}
     ${body}${setrow}
-    <div class="row">${other}<div class="col"><textarea rows="2" data-note="${esc(q.id)}" placeholder="${q.type==="gate"?"不通过时必填：要改什么":"补充说明（可选），例如：B 的笔触 + D 的颜色"}"></textarea></div>${btn}</div>
+    <div class="row">${other}<div class="col"><textarea rows="3" data-note="${esc(q.id)}" placeholder="${esc(notePlaceholder(q))}"></textarea></div>${btn}</div>
   </section>`;
 }
 function canSubmit(q){
@@ -709,7 +717,7 @@ document.addEventListener("fullscreenchange",()=>{ if(V.open) requestAnimationFr
 let sig="";
 async function load(){
   if(STATIC){header(STATIC);render(STATIC);return}
-  try{const r=await fetch("/api/state");const v=await r.json();const s=JSON.stringify([TAB,v.stage,v.open.map(x=>x.id),v.queued.length,v.answered.map(x=>x.id+x.delivered+x.applied),v.broken.length,(v.history||[]).map(x=>x.id+x._answer.ts)]);
+  try{const r=await fetch("/api/state");const v=await r.json();const s=JSON.stringify([TAB,v.stage,v.open,v.queued.length,v.answered.map(x=>x.id+x.delivered+x.applied),v.broken.length,(v.history||[]).map(x=>x.id+x._answer.ts)]);
     header(v); if(s!==sig){sig=s;render(v)}}catch(_){}
 }
 load(); if(!STATIC) setInterval(load,2000);

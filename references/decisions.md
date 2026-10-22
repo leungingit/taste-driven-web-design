@@ -58,6 +58,7 @@
 - `media[].type`：`image` / `html` / `video` / `link`。`src` 不带前缀时相对 `media/samples/<ID>/`；`@/` 开头相对 `.taste-design/`（如 `@/work/variants/variants.html#embed=V3`、`@/media/baseline/home.png`）；也可以是 http(s)。
 - `media[].origin`（必填）：`inbox`（需 `ref`）/ `search`（需 `credit`）/ `screenshot` 外部页面截图（需 `credit`）/ `generated` 生图工具 / `rendered` 代码渲染（含本项目页面截图）。**artwork 决策禁止 rendered。**
 - `media[].viewport`：html 样张按此宽度渲染再缩成缩略图；`display: "wide"` 占满整行大尺寸显示。
+- `note_placeholder`（可选）：针对本题的补充说明提示，只能引用本题真实选项 ID、名称与已描述的特征；不要套用固定字母或无关的笔触、配色示例。未提供时页面根据实际选项名称生成提示，非视觉问题使用选择原因提示。该字段不改变作答与验收规则。
 - `visual: false`：非视觉问题（范围、技术约束、文案），允许选项不带 media。
 - `allow_setting: true` + `setting_axis`：允许用户回答「都要，做成设置项」（仅 single / scale；见 0.12）。答案里会多一个 `setting: {axis, values, default}`，`choice` 是默认值。
 - `media[].attrs`：页面样张加载后在其 `<html>` 上设置 `data-*` 属性，例如 `{"mode": "dark", "preset": "warm"}`，用同一个原型预览不同主题。`media[].trusted: true`：允许样张页面与决策页同源（主题画廊需要）。
